@@ -5,9 +5,8 @@ import { UpdateProfileDto } from '../dto/update-profile.dto';
 import { InviteSubAccountDto } from '../dto/sub-account.dto';
 import { CompleteOnboardingDto, ActivateOwnerProfileDto, ActivateAgentProfileDto } from '../dto/onboarding.dto';
 import { JwtAuthGuard } from '@/common/guards/jwt-auth.guard';
-import { RolesGuard } from '@/common/guards/roles.guard';
-import { Roles } from '@/common/decorators/roles.decorator';
-import { Role } from '@prisma/client';
+import { CapabilityGuard } from '@/common/guards/capability.guard';
+import { RequireCapability } from '@/common/decorators/capability.decorator';
 
 @ApiTags('Users')
 @ApiBearerAuth('access-token')
@@ -58,32 +57,32 @@ export class UsersController {
     return this.usersService.deleteAccount(req.user.id);
   }
 
-  @UseGuards(RolesGuard)
-  @Roles(Role.ADMIN, Role.SUPER_ADMIN, Role.MANAGER)
+  @UseGuards(CapabilityGuard)
+  @RequireCapability('OWNER')
   @Post('sub-accounts/invite')
-  @ApiOperation({ summary: 'Invite staff sub-account' })
+  @ApiOperation({ summary: 'Invite sub-account (e.g., manager or agent)' })
   async inviteSubAccount(@Request() req: any, @Body() dto: InviteSubAccountDto) {
     return this.usersService.inviteSubAccount(req.user.id, dto);
   }
 
-  @UseGuards(RolesGuard)
-  @Roles(Role.ADMIN, Role.SUPER_ADMIN, Role.MANAGER)
+  @UseGuards(CapabilityGuard)
+  @RequireCapability('OWNER')
   @Get('sub-accounts')
-  @ApiOperation({ summary: 'List sub-accounts' })
+  @ApiOperation({ summary: 'List owner sub-accounts' })
   async getSubAccounts(@Request() req: any) {
     return this.usersService.getSubAccounts(req.user.id);
   }
 
-  @UseGuards(RolesGuard)
-  @Roles(Role.ADMIN, Role.SUPER_ADMIN, Role.MANAGER)
+  @UseGuards(CapabilityGuard)
+  @RequireCapability('OWNER')
   @Patch('sub-accounts/:id/status')
   @ApiOperation({ summary: 'Activate/deactivate sub-account' })
   async setSubAccountStatus(@Request() req: any, @Param('id') id: string, @Body('isActive') isActive: boolean) {
     return this.usersService.setSubAccountStatus(req.user.id, id, isActive);
   }
 
-  @UseGuards(RolesGuard)
-  @Roles(Role.ADMIN, Role.SUPER_ADMIN, Role.MANAGER)
+  @UseGuards(CapabilityGuard)
+  @RequireCapability('OWNER')
   @Delete('sub-accounts/:id')
   @ApiOperation({ summary: 'Remove sub-account from organization' })
   async removeSubAccount(@Request() req: any, @Param('id') id: string) {

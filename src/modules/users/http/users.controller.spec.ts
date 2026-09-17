@@ -3,6 +3,8 @@ import { UsersController } from './users.controller';
 import { UsersService } from '../services/users.service';
 import { Role } from '@prisma/client';
 
+import { PrismaService } from '@/infra/database/prisma.service';
+
 describe('UsersController', () => {
   let controller: UsersController;
   let usersService: UsersService;
@@ -22,6 +24,7 @@ describe('UsersController', () => {
       controllers: [UsersController],
       providers: [
         { provide: UsersService, useValue: mockUsersService },
+        { provide: PrismaService, useValue: {} },
       ],
     }).compile();
 

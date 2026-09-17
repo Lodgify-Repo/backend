@@ -8,7 +8,7 @@ import { UserCapabilities, AccountPersona } from '@/common/domain/user-capabilit
 import * as crypto from 'crypto';
 import { DomainError } from '@/common/domain/error';
 import { UserErrorCodes } from '../errors';
-import { User } from '@prisma/client';
+import { User, Role } from '@prisma/client';
 
 export type UserProfile = Pick<
   User,
@@ -155,6 +155,10 @@ export class UsersService extends Service {
   }
 
   async inviteSubAccount(parentId: string, dto: InviteSubAccountDto) {
+    if (dto.role === Role.ADMIN || dto.role === Role.SUPER_ADMIN) {
+      throw new DomainError(UserErrorCodes.INVALID_PROFILE_DATA, 'Owners cannot invite administrator sub-accounts');
+    }
+
     const existingUser = await this.prisma.user.findUnique({ where: { email: dto.email } });
     const token = crypto.randomUUID();
     const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
@@ -183,7 +187,27 @@ export class UsersService extends Service {
   async getSubAccounts(parentId: string) {
     return this.prisma.user.findMany({
       where: { parentId },
-      select: { id: true, email: true, firstName: true, lastName: true, role: true, isActive: true },
+      select: {
+        id: true,
+        email: true,
+        firstName: true,
+        lastName: true,
+        role: true,
+        isActive: true,
+        propertyAssignments: {
+          include: {
+            property: {
+              select: {
+                id: true,
+                title: true,
+                category: true,
+                status: true,
+                price: true,
+              },
+            },
+          },
+        },
+      },
     });
   }
 

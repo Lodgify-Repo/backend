@@ -37,6 +37,7 @@ model User {
   properties        Property[]
   receivedAuths     AgentPropertyAuthorization[] @relation("AgentAuths")
   grantedAuths      AgentPropertyAuthorization[] @relation("OwnerAuths")
+  propertyAssignments PropertyAssignment[]
 }
 
 
@@ -202,6 +203,7 @@ model Property {
   updatedAt   DateTime       @updatedAt
 
   authorizations AgentPropertyAuthorization[]
+  assignments    PropertyAssignment[]
   
   @@index([ownerId])
   @@index([category])
@@ -230,3 +232,25 @@ model AgentPropertyAuthorization {
   @@index([ownerId])
   @@index([status])
 }
+
+enum PropertyAssignmentRole {
+  MANAGER
+  AGENT
+}
+
+model PropertyAssignment {
+  id          String                 @id @default(uuid())
+  propertyId  String
+  property    Property               @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  userId      String
+  user        User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role        PropertyAssignmentRole
+  permissions String[]               @default([])
+  createdAt   DateTime               @default(now())
+  updatedAt   DateTime               @updatedAt
+
+  @@unique([propertyId, userId, role])
+  @@index([propertyId])
+  @@index([userId])
+}
+

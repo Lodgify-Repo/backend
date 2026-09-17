@@ -44,12 +44,16 @@ export class CapabilityGuard implements CanActivate {
       throw new ForbiddenException('User record not found.');
     }
 
-    const hasOwnerProfile = !!userRecord.ownerProfile?.isVerified;
-    const hasAgentProfile = !!userRecord.agentProfile?.isVerified;
+    const hasOwner = !!userRecord.ownerProfile;
+    const hasAgent = !!userRecord.agentProfile;
 
-    if (requiredCapabilities.includes('OWNER') && hasOwnerProfile) return true;
-    if (requiredCapabilities.includes('AGENT') && hasAgentProfile) return true;
+    if (requiredCapabilities.includes('OWNER') && hasOwner) {
+      return true;
+    }
+    if (requiredCapabilities.includes('AGENT') && hasAgent) {
+      return true;
+    }
 
-    throw new ForbiddenException(`Requires active and verified capability: ${requiredCapabilities.join(' or ')}`);
+    throw new ForbiddenException(`Requires active capability: ${requiredCapabilities.join(' or ')}`);
   }
 }
