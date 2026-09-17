@@ -1,0 +1,232 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+
+model User {
+  id                String    @id @default(uuid())
+  email             String    @unique
+  password          String?
+  firstName         String
+  lastName          String
+  role              Role      @default(USER)
+  phone             String?
+  avatarUrl         String?
+  isActive          Boolean   @default(true)
+  googleId          String?   @unique
+  refreshToken      String?
+  resetToken        String?
+  resetTokenExpires DateTime?
+  parentId          String?
+  parent            User?     @relation("SubAccounts", fields: [parentId], references: [id])
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  deletedAt         DateTime?
+
+  // Relations
+  subAccounts       User[]                 @relation("SubAccounts")
+  sentInvitations   SubAccountInvitation[] @relation("SentInvitations")
+  apiKeys           ApiKey[]
+  ownerProfile      OwnerProfile?
+  agentProfile      AgentProfile?
+  properties        Property[]
+  receivedAuths     AgentPropertyAuthorization[] @relation("AgentAuths")
+  grantedAuths      AgentPropertyAuthorization[] @relation("OwnerAuths")
+}
+
+
+enum Role {
+  SUPER_ADMIN
+  ADMIN
+  MANAGER
+  USER
+}
+
+
+enum AuditLogLevel {
+  INFO
+  WARN
+  ERROR
+  CRITICAL
+}
+
+enum AuditLogAction {
+  USER_LOGIN
+  USER_LOGOUT
+  USER_REGISTER
+  USER_CREATED
+  USER_UPDATED
+  USER_SUSPENDED
+  USER_ACTIVATED
+  PASSWORD_RESET_REQUEST
+  PASSWORD_RESET_SUCCESS
+  API_KEY_CREATED
+  API_KEY_REVOKED
+  SYSTEM_STARTUP
+  SYSTEM_ERROR
+  CONFIG_CHANGED
+}
+
+model AuditLog {
+  id         String         @id @default(uuid())
+  level      AuditLogLevel  @default(INFO)
+  action     AuditLogAction
+  message    String
+  actorId    String?
+  actorEmail String?
+  targetType String?
+  targetId   String?
+  ipAddress  String?
+  userAgent  String?
+  metadata   Json?
+  createdAt  DateTime       @default(now())
+
+  @@index([level])
+  @@index([action])
+  @@index([actorId])
+  @@index([createdAt])
+}
+
+
+model SubAccountInvitation {
+  id        String   @id @default(uuid())
+  senderId  String
+  sender    User     @relation("SentInvitations", fields: [senderId], references: [id])
+  email     String
+  role      Role
+  status    String   @default("PENDING") // PENDING, ACCEPTED, CANCELLED
+  token     String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+
+model ApiKey {
+  id          String    @id @default(uuid())
+  name        String    @default("Default")
+  key         String    @unique // SHA-256 hashed or secure key string
+  tenantId    String    // Associated tenant / account identifier
+  ownerId     String?
+  owner       User?     @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  tier        String    @default("standard") // standard, enterprise
+  permissions String[]  @default([])         // Authorization scopes/permissions
+  isActive    Boolean   @default(true)
+  expiresAt   DateTime?
+  lastUsedAt  DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([key])
+  @@index([tenantId])
+}
+
+enum PropertyCategory {
+  HOTEL
+  SHORTLET
+  RENTAL
+  SALE
+}
+
+enum PropertyStatus {
+  DRAFT
+  AVAILABLE
+  OCCUPIED
+  UNDER_CONTRACT
+  SOLD
+  DELISTED
+}
+
+enum AgentType {
+  INDIVIDUAL
+  ORGANIZATION
+}
+
+enum CommissionType {
+  PERCENTAGE
+  FIXED
+}
+
+enum AuthorizationStatus {
+  PENDING
+  ACTIVE
+  REVOKED
+  REJECTED
+}
+
+enum OnboardingIntent {
+  SEEKER
+  OWNER
+  AGENT
+  HYBRID
+}
+
+model OwnerProfile {
+  id           String   @id @default(uuid())
+  userId       String   @unique
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  businessName String?
+  isVerified   Boolean  @default(false)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+model AgentProfile {
+  id                    String    @id @default(uuid())
+  userId                String    @unique
+  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  agencyType            AgentType @default(INDIVIDUAL)
+  organizationName      String?
+  licenseNumber         String?
+  defaultCommissionRate Float?
+  isVerified            Boolean   @default(false)
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+}
+
+model Property {
+  id          String         @id @default(uuid())
+  ownerId     String
+  owner       User           @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  title       String
+  category    PropertyCategory
+  status      PropertyStatus @default(DRAFT)
+  price       Decimal        @default(0.0)
+  metadata    Json?          
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  authorizations AgentPropertyAuthorization[]
+  
+  @@index([ownerId])
+  @@index([category])
+  @@index([status])
+}
+
+model AgentPropertyAuthorization {
+  id              String              @id @default(uuid())
+  propertyId      String
+  property        Property            @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  agentId         String
+  agent           User                @relation("AgentAuths", fields: [agentId], references: [id], onDelete: Cascade)
+  ownerId         String
+  owner           User                @relation("OwnerAuths", fields: [ownerId], references: [id], onDelete: Cascade)
+  commissionType  CommissionType
+  commissionValue Decimal
+  status          AuthorizationStatus @default(PENDING)
+  permissions     String[]            @default([])
+  validFrom       DateTime            @default(now())
+  validUntil      DateTime?
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+
+  @@index([propertyId])
+  @@index([agentId])
+  @@index([ownerId])
+  @@index([status])
+}
