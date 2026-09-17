@@ -2,7 +2,7 @@ import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { Controller, Get, Body, UseGuards, Request, Patch, Delete, Post, Param } from '@nestjs/common';
 import { UsersService } from '../services/users.service';
 import { UpdateProfileDto } from '../dto/update-profile.dto';
-import { InviteSubAccountDto } from '../dto/sub-account.dto';
+import { InviteSubAccountDto, AcceptSubAccountDto } from '../dto/sub-account.dto';
 import { CompleteOnboardingDto, ActivateOwnerProfileDto, ActivateAgentProfileDto } from '../dto/onboarding.dto';
 import { JwtAuthGuard } from '@/common/guards/jwt-auth.guard';
 import { CapabilityGuard } from '@/common/guards/capability.guard';
@@ -71,6 +71,12 @@ export class UsersController {
   @ApiOperation({ summary: 'List owner sub-accounts' })
   async getSubAccounts(@Request() req: any) {
     return this.usersService.getSubAccounts(req.user.id);
+  }
+
+  @Post('sub-accounts/accept')
+  @ApiOperation({ summary: 'Accept a sub-account invitation' })
+  async acceptInvitation(@Request() req: any, @Body() dto: AcceptSubAccountDto) {
+    return this.usersService.acceptInvitation(req.user.id, dto);
   }
 
   @UseGuards(CapabilityGuard)

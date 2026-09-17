@@ -1,4 +1,4 @@
-import { IsEmail, IsEnum, IsOptional, IsArray, IsString } from 'class-validator';
+import { IsEmail, IsEnum, IsOptional, IsArray, IsString, IsNotEmpty } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Role } from '@prisma/client';
 
@@ -25,4 +25,11 @@ export class InviteSubAccountDto {
   @IsArray()
   @IsString({ each: true })
   propertyIds?: string[];
+}
+
+export class AcceptSubAccountDto {
+  @ApiProperty({ description: 'Invitation token', example: 'uuid-token' })
+  @IsString()
+  @IsNotEmpty()
+  token: string;
 }

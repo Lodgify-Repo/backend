@@ -7,6 +7,7 @@ import { DomainErrorFilter, registerErrorMap } from './common/filters/domain-err
 import { AuthErrorMap } from './modules/auth/errors';
 import { UserErrorMap } from './modules/users/errors';
 import { AdminErrorMap } from './modules/admin/errors';
+import { PrismaClientExceptionFilter } from './common/filters/prisma-client-exception.filter';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
@@ -16,7 +17,10 @@ async function bootstrap() {
   registerErrorMap(UserErrorMap);
   registerErrorMap(AdminErrorMap);
 
-  app.useGlobalFilters(new DomainErrorFilter());
+  app.useGlobalFilters(
+    new DomainErrorFilter(),
+    new PrismaClientExceptionFilter(),
+  );
 
   app.useGlobalPipes(
     new ValidationPipe({

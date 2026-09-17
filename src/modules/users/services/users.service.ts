@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { Service } from '@/common/domain/base.service';
 import { PrismaService } from '@/infra/database/prisma.service';
 import { UpdateProfileDto } from '../dto/update-profile.dto';
-import { InviteSubAccountDto } from '../dto/sub-account.dto';
+import { InviteSubAccountDto, AcceptSubAccountDto } from '../dto/sub-account.dto';
 import { CompleteOnboardingDto, ActivateOwnerProfileDto, ActivateAgentProfileDto } from '../dto/onboarding.dto';
 import { UserCapabilities, AccountPersona } from '@/common/domain/user-capability.types';
 import * as crypto from 'crypto';
@@ -182,6 +182,48 @@ export class UsersService extends Service {
     this.logger.info(`[Invitation] Email to ${dto.email}: ${link}`);
 
     return invitation;
+  }
+
+  async acceptInvitation(userId: string, dto: AcceptSubAccountDto) {
+    const invitation = await this.prisma.subAccountInvitation.findUnique({
+      where: { token: dto.token },
+    });
+
+    if (!invitation) {
+      throw new DomainError(UserErrorCodes.RESOURCE_NOT_FOUND, 'Invitation not found or invalid token');
+    }
+
+    if (invitation.status !== 'PENDING') {
+      throw new DomainError(UserErrorCodes.VALIDATION_FAILED, 'Invitation is no longer pending');
+    }
+
+    if (new Date() > invitation.expiresAt) {
+      throw new DomainError(UserErrorCodes.VALIDATION_FAILED, 'Invitation has expired');
+    }
+
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+    });
+
+    if (!user || user.email !== invitation.email) {
+      throw new DomainError(UserErrorCodes.UNAUTHORIZED, 'Invitation email does not match your account');
+    }
+
+    // Update user and invitation in a transaction
+    return this.prisma.$transaction(async (tx) => {
+      await tx.subAccountInvitation.update({
+        where: { id: invitation.id },
+        data: { status: 'ACCEPTED' },
+      });
+
+      return tx.user.update({
+        where: { id: userId },
+        data: {
+          parentId: invitation.senderId,
+          role: invitation.role,
+        },
+      });
+    });
   }
 
   async getSubAccounts(parentId: string) {
