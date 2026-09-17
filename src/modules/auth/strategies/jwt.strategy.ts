@@ -1,7 +1,7 @@
 import { ExtractJwt, Strategy } from 'passport-jwt';
 import { PassportStrategy } from '@nestjs/passport';
 import { Injectable } from '@nestjs/common';
-import { JWT_SECRET } from '@/common/constants';
+import { ConfigService } from '@nestjs/config';
 import { Role } from '@prisma/client';
 
 interface JwtPayload {
@@ -12,11 +12,11 @@ interface JwtPayload {
 
 @Injectable()
 export class JwtStrategy extends PassportStrategy(Strategy) {
-  constructor() {
+  constructor(configService: ConfigService) {
     super({
       jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
       ignoreExpiration: false,
-      secretOrKey: JWT_SECRET || 'super-secret-jwt-key',
+      secretOrKey: configService.get<string>('JWT_SECRET') || 'super-secret-jwt-key',
     });
   }
 

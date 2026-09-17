@@ -1,9 +1,9 @@
-import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
+import { ApiTags, ApiOperation, ApiBearerAuth, ApiBody, ApiResponse } from '@nestjs/swagger';
 import { Controller, Post, Body, UseGuards, Request, Get, HttpCode, HttpStatus, Res, Req, UnauthorizedException } from '@nestjs/common';
 import type { Response } from 'express';
 import { AuthGuard } from '@nestjs/passport';
 import { AuthService } from '../services/auth.service';
-import { RegisterDto, ResetPasswordDto, NewPasswordDto } from '../dto/auth.dto';
+import { RegisterDto, LoginDto, ResetPasswordDto, NewPasswordDto } from '../dto/auth.dto';
 import { LocalAuthGuard } from '../guards/local-auth.guard';
 import { JwtAuthGuard } from '@/common/guards/jwt-auth.guard';
 
@@ -17,6 +17,8 @@ export class AuthController {
 
   @Post('register')
   @ApiOperation({ summary: 'Register' })
+  @ApiResponse({ status: 201, description: 'User registered successfully' })
+  @ApiResponse({ status: 409, description: 'User already exists' })
   async register(@Body() dto: RegisterDto) {
     return this.authService.register(dto);
   }
@@ -25,6 +27,9 @@ export class AuthController {
   @Post('login')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Login' })
+  @ApiBody({ type: LoginDto })
+  @ApiResponse({ status: 200, description: 'Login successful' })
+  @ApiResponse({ status: 401, description: 'Invalid credentials' })
   async login(@Request() req: any, @Res({ passthrough: true }) res: Response) {
     const session = await this.authService.login(req.user);
     res.cookie('refresh_token', session.refresh_token, {

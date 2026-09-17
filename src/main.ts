@@ -3,11 +3,20 @@ import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { ValidationPipe } from '@nestjs/common';
 import cookieParser from 'cookie-parser';
 import { AppModule } from './app.module';
+import { DomainErrorFilter, registerErrorMap } from './common/filters/domain-error.filter';
+import { AuthErrorMap } from './modules/auth/errors';
+import { UserErrorMap } from './modules/users/errors';
+import { AdminErrorMap } from './modules/admin/errors';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
   app.use(cookieParser());
+  registerErrorMap(AuthErrorMap);
+  registerErrorMap(UserErrorMap);
+  registerErrorMap(AdminErrorMap);
+
+  app.useGlobalFilters(new DomainErrorFilter());
 
   app.useGlobalPipes(
     new ValidationPipe({
