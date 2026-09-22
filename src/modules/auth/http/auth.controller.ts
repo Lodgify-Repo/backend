@@ -57,6 +57,17 @@ export class AuthController {
     return { access_token: session.access_token, user: session.user };
   }
 
+  @UseGuards(JwtAuthGuard)
+  @Post('logout')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Logout' })
+  @ApiResponse({ status: 200, description: 'Logout successful' })
+  async logout(@Request() req: any, @Res({ passthrough: true }) res: Response) {
+    await this.authService.logout(req.user.id);
+    res.clearCookie('refresh_token');
+    return { message: 'Logged out successfully' };
+  }
+
   @Get('google')
   @UseGuards(AuthGuard('google'))
   @ApiOperation({ summary: 'Google OAuth Login' })

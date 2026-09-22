@@ -51,20 +51,15 @@ class Logger {
     return this.instances.get(filename)!;
   }
 
-  /** Returns the resolved absolute path to the log directory */
+
   public static getLogDir(): string {
     return this.initLogDir();
   }
 
-  /** Returns all valid log channel names */
   public static getAvailableLogFiles(): LogFiles[] {
     return ['server', 'http', 'access', 'db', 'mail', 'payment'];
   }
 
-  /**
-   * Resolves a safe absolute path for a given log filename.
-   * Returns null if the filename is not a recognized log channel (prevents path traversal).
-   */
   public static getLogFilePath(filename: string): string | null {
     const allowed = this.getAvailableLogFiles() as string[];
     if (!allowed.includes(filename)) return null;

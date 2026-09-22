@@ -97,6 +97,18 @@ export class AuthService extends Service {
     return this.login(user);
   }
 
+  async logout(userId: string): Promise<void> {
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user) {
+      throw new DomainError(AuthErrorCodes.USER_NOT_FOUND, 'User not found');
+    }
+
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: { refreshToken: null },
+    });
+  }
+
   async googleLogin(profile: GoogleProfile): Promise<AuthSession> {
     if (!profile?.email) {
       throw new DomainError(AuthErrorCodes.INVALID_CREDENTIALS, 'No valid profile from Google');

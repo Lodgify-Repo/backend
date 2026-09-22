@@ -1,5 +1,3 @@
-import { PropertyCategory, AgentType, CommissionType, AuthorizationStatus, OnboardingIntent } from '@prisma/client';
-
 export type AccountPersona = 'CUSTOMER' | 'OWNER' | 'AGENT';
 
 export type CommissionSpec =

@@ -26,12 +26,10 @@ export class CapabilityGuard implements CanActivate {
       throw new ForbiddenException('User payload missing in request.');
     }
 
-    // CUSTOMER capability is implicitly available to all authenticated users
     if (requiredCapabilities.includes('CUSTOMER')) {
       return true;
     }
 
-    // Fetch user with profiles to check capabilities
     const userRecord = await this.prisma.user.findUnique({
       where: { id: user.id },
       include: {
