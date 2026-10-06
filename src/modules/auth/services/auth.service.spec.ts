@@ -1,6 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { AuthService } from './auth.service';
 import { PrismaService } from '@/infra/database/prisma.service';
+import { EventBusService } from '@/infra/eventbus';
 import { JwtService } from '@nestjs/jwt';
 import { Role } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
@@ -30,12 +31,17 @@ describe('AuthService', () => {
     sign: jest.fn().mockReturnValue('mocked-jwt-token'),
   };
 
+  const mockEvents = {
+    emit: jest.fn(),
+  };
+
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         AuthService,
         { provide: PrismaService, useValue: mockPrisma },
         { provide: JwtService, useValue: mockJwt },
+        { provide: EventBusService, useValue: mockEvents },
       ],
     }).compile();
 
@@ -72,13 +78,21 @@ describe('AuthService', () => {
     it('should throw an error if user does not exist', async () => {
       mockPrisma.user.findUnique.mockResolvedValue(null);
 
-      await expect(service.validateUser('test@test.com', 'password')).rejects.toThrow(DomainError);
+      await expect(
+        service.validateUser('test@test.com', 'password'),
+      ).rejects.toThrow(DomainError);
     });
 
     it('should throw an error if account is disabled', async () => {
-      mockPrisma.user.findUnique.mockResolvedValue({ id: '1', email: 'test@test.com', isActive: false });
+      mockPrisma.user.findUnique.mockResolvedValue({
+        id: '1',
+        email: 'test@test.com',
+        isActive: false,
+      });
 
-      await expect(service.validateUser('test@test.com', 'password')).rejects.toThrow(DomainError);
+      await expect(
+        service.validateUser('test@test.com', 'password'),
+      ).rejects.toThrow(DomainError);
     });
   });
 
@@ -110,7 +124,10 @@ describe('AuthService', () => {
     });
 
     it('should throw error if user already exists', async () => {
-      mockPrisma.user.findUnique.mockResolvedValue({ id: '1', email: 'existing@test.com' });
+      mockPrisma.user.findUnique.mockResolvedValue({
+        id: '1',
+        email: 'existing@test.com',
+      });
 
       await expect(
         service.register({
@@ -126,12 +143,87 @@ describe('AuthService', () => {
 
   describe('forgotPassword', () => {
     it('should update reset token if user exists', async () => {
-      mockPrisma.user.findUnique.mockResolvedValue({ id: '1', email: 'test@test.com' });
+      mockPrisma.user.findUnique.mockResolvedValue({
+        id: '1',
+        email: 'test@test.com',
+      });
       mockPrisma.user.update.mockResolvedValue({ id: '1' });
+      (bcrypt.hash as jest.Mock).mockResolvedValue('hashed-otp');
 
       await service.forgotPassword({ email: 'test@test.com' });
 
       expect(mockPrisma.user.update).toHaveBeenCalled();
+      expect(mockEvents.emit).toHaveBeenCalledWith(
+        'auth:password-reset-otp',
+        expect.objectContaining({ email: 'test@test.com' }),
+      );
+    });
+
+    it('should do nothing if user does not exist', async () => {
+      mockPrisma.user.findUnique.mockResolvedValue(null);
+
+      await service.forgotPassword({ email: 'missing@test.com' });
+
+      expect(mockPrisma.user.update).not.toHaveBeenCalled();
+      expect(mockEvents.emit).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('verifyOtp', () => {
+    it('should issue a reset token when the OTP is valid', async () => {
+      mockPrisma.user.findUnique.mockResolvedValue({
+        id: '1',
+        email: 'test@test.com',
+        resetToken: 'hashed-otp',
+        resetTokenExpires: new Date(Date.now() + 60_000),
+      });
+      mockPrisma.user.update.mockResolvedValue({ id: '1' });
+      (bcrypt.compare as jest.Mock).mockResolvedValue(true);
+
+      const result = await service.verifyOtp({
+        email: 'test@test.com',
+        otp: '482913',
+      });
+
+      expect(result.resetToken).toBeDefined();
+      expect(mockPrisma.user.update).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { id: '1' } }),
+      );
+    });
+
+    it('should throw when the OTP does not match', async () => {
+      mockPrisma.user.findUnique.mockResolvedValue({
+        id: '1',
+        email: 'test@test.com',
+        resetToken: 'hashed-otp',
+        resetTokenExpires: new Date(Date.now() + 60_000),
+      });
+      (bcrypt.compare as jest.Mock).mockResolvedValue(false);
+
+      await expect(
+        service.verifyOtp({ email: 'test@test.com', otp: '000000' }),
+      ).rejects.toThrow(DomainError);
+    });
+
+    it('should throw when the OTP has expired', async () => {
+      mockPrisma.user.findUnique.mockResolvedValue({
+        id: '1',
+        email: 'test@test.com',
+        resetToken: 'hashed-otp',
+        resetTokenExpires: new Date(Date.now() - 60_000),
+      });
+
+      await expect(
+        service.verifyOtp({ email: 'test@test.com', otp: '482913' }),
+      ).rejects.toThrow(DomainError);
+    });
+
+    it('should throw when no OTP was requested', async () => {
+      mockPrisma.user.findUnique.mockResolvedValue(null);
+
+      await expect(
+        service.verifyOtp({ email: 'missing@test.com', otp: '482913' }),
+      ).rejects.toThrow(DomainError);
     });
   });
 

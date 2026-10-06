@@ -2,15 +2,35 @@ import { Injectable } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { Service } from '@/common/domain/base.service';
 import { PrismaService } from '@/infra/database/prisma.service';
-import { RegisterDto, ResetPasswordDto, NewPasswordDto } from '../dto/auth.dto';
+import { EventBusService } from '@/infra/eventbus';
+import {
+  AUTH_OTP_REQUESTED,
+  type PasswordResetOtpRequested,
+} from '@/common/events/auth.events';
+import {
+  RegisterDto,
+  ResetPasswordDto,
+  NewPasswordDto,
+  VerifyOtpDto,
+} from '../dto/auth.dto';
 import * as bcrypt from 'bcrypt';
 import * as crypto from 'crypto';
 import { DomainError } from '@/common/domain/error';
 import { AuthErrorCodes } from '../errors';
 import { User } from '@prisma/client';
 
-export type SanitizedUser = Omit<User, 'password' | 'refreshToken' | 'resetToken' | 'resetTokenExpires'>;
-export type UserPrincipal = Pick<User, 'id' | 'email' | 'firstName' | 'lastName' | 'role'>;
+const OTP_TTL_MINUTES = 10;
+const OTP_TTL_MS = OTP_TTL_MINUTES * 60 * 1000;
+const RESET_TOKEN_TTL_MS = 60 * 60 * 1000;
+
+export type SanitizedUser = Omit<
+  User,
+  'password' | 'refreshToken' | 'resetToken' | 'resetTokenExpires'
+>;
+export type UserPrincipal = Pick<
+  User,
+  'id' | 'email' | 'firstName' | 'lastName' | 'role'
+>;
 
 export interface GoogleProfile {
   email: string;
@@ -26,32 +46,52 @@ export interface AuthSession {
   user: UserPrincipal;
 }
 
+export type VerifiedOtp = {
+  readonly resetToken: string;
+};
+
 @Injectable()
 export class AuthService extends Service {
   constructor(
     private readonly prisma: PrismaService,
     private readonly jwtService: JwtService,
+    private readonly events: EventBusService,
   ) {
     super();
   }
 
-  async validateUser(email: string, pass: string): Promise<Omit<User, 'password'>> {
+  async validateUser(
+    email: string,
+    pass: string,
+  ): Promise<Omit<User, 'password'>> {
     const user = await this.prisma.user.findUnique({ where: { email } });
     if (!user) {
-      throw new DomainError(AuthErrorCodes.USER_NOT_FOUND, 'Invalid credentials');
+      throw new DomainError(
+        AuthErrorCodes.USER_NOT_FOUND,
+        'Invalid credentials',
+      );
     }
 
     if (!user.isActive) {
-      throw new DomainError(AuthErrorCodes.ACCOUNT_DISABLED, 'Account is disabled');
+      throw new DomainError(
+        AuthErrorCodes.ACCOUNT_DISABLED,
+        'Account is disabled',
+      );
     }
 
     if (!user.password) {
-      throw new DomainError(AuthErrorCodes.INVALID_CREDENTIALS, 'Invalid credentials');
+      throw new DomainError(
+        AuthErrorCodes.INVALID_CREDENTIALS,
+        'Invalid credentials',
+      );
     }
 
     const isMatch = await bcrypt.compare(pass, user.password);
     if (!isMatch) {
-      throw new DomainError(AuthErrorCodes.INVALID_CREDENTIALS, 'Invalid credentials');
+      throw new DomainError(
+        AuthErrorCodes.INVALID_CREDENTIALS,
+        'Invalid credentials',
+      );
     }
 
     const { password, ...result } = user;
@@ -92,7 +132,10 @@ export class AuthService extends Service {
       where: { refreshToken: token },
     });
     if (!user) {
-      throw new DomainError(AuthErrorCodes.INVALID_CREDENTIALS, 'Invalid refresh token');
+      throw new DomainError(
+        AuthErrorCodes.INVALID_CREDENTIALS,
+        'Invalid refresh token',
+      );
     }
     return this.login(user);
   }
@@ -111,7 +154,10 @@ export class AuthService extends Service {
 
   async googleLogin(profile: GoogleProfile): Promise<AuthSession> {
     if (!profile?.email) {
-      throw new DomainError(AuthErrorCodes.INVALID_CREDENTIALS, 'No valid profile from Google');
+      throw new DomainError(
+        AuthErrorCodes.INVALID_CREDENTIALS,
+        'No valid profile from Google',
+      );
     }
 
     const existingUser = await this.prisma.user.findUnique({
@@ -148,7 +194,10 @@ export class AuthService extends Service {
     });
 
     if (existingUser) {
-      throw new DomainError(AuthErrorCodes.USER_ALREADY_EXISTS, 'User with this email already exists');
+      throw new DomainError(
+        AuthErrorCodes.USER_ALREADY_EXISTS,
+        'User with this email already exists',
+      );
     }
 
     const salt = await bcrypt.genSalt(10);
@@ -167,18 +216,64 @@ export class AuthService extends Service {
   }
 
   async forgotPassword(dto: ResetPasswordDto): Promise<void> {
-    const user = await this.prisma.user.findUnique({ where: { email: dto.email } });
+    const user = await this.prisma.user.findUnique({
+      where: { email: dto.email },
+    });
     if (!user) return;
 
+    const otp = crypto.randomInt(100_000, 1_000_000).toString();
+    const otpHash = await bcrypt.hash(otp, 10);
+    const resetTokenExpires = new Date(Date.now() + OTP_TTL_MS);
+
+    await this.prisma.user.update({
+      where: { id: user.id },
+      data: { resetToken: otpHash, resetTokenExpires },
+    });
+
+    this.events.emit(AUTH_OTP_REQUESTED, {
+      event: AUTH_OTP_REQUESTED,
+      email: user.email,
+      otp,
+      expiresInMinutes: OTP_TTL_MINUTES,
+    } satisfies PasswordResetOtpRequested);
+  }
+
+  async verifyOtp(dto: VerifyOtpDto): Promise<VerifiedOtp> {
+    const user = await this.prisma.user.findUnique({
+      where: { email: dto.email },
+    });
+
+    if (!user || !user.resetToken || !user.resetTokenExpires) {
+      throw new DomainError(
+        AuthErrorCodes.INVALID_OTP,
+        'Invalid verification code',
+      );
+    }
+
+    if (user.resetTokenExpires.getTime() < Date.now()) {
+      throw new DomainError(
+        AuthErrorCodes.OTP_EXPIRED,
+        'Verification code has expired',
+      );
+    }
+
+    const isMatch = await bcrypt.compare(dto.otp, user.resetToken);
+    if (!isMatch) {
+      throw new DomainError(
+        AuthErrorCodes.INVALID_OTP,
+        'Invalid verification code',
+      );
+    }
+
     const resetToken = crypto.randomBytes(32).toString('hex');
-    const resetTokenExpires = new Date(Date.now() + 60 * 60 * 1000);
+    const resetTokenExpires = new Date(Date.now() + RESET_TOKEN_TTL_MS);
 
     await this.prisma.user.update({
       where: { id: user.id },
       data: { resetToken, resetTokenExpires },
     });
 
-    this.logger.info(`Password reset requested for ${user.email}. Token generated.`);
+    return { resetToken };
   }
 
   async resetPassword(dto: NewPasswordDto): Promise<void> {
@@ -190,7 +285,10 @@ export class AuthService extends Service {
     });
 
     if (!user) {
-      throw new DomainError(AuthErrorCodes.INVALID_CREDENTIALS, 'Invalid or expired reset token');
+      throw new DomainError(
+        AuthErrorCodes.INVALID_CREDENTIALS,
+        'Invalid or expired reset token',
+      );
     }
 
     const salt = await bcrypt.genSalt(10);

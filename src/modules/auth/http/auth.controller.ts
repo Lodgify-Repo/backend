@@ -1,9 +1,33 @@
-import { ApiTags, ApiOperation, ApiBearerAuth, ApiBody, ApiResponse } from '@nestjs/swagger';
-import { Controller, Post, Body, UseGuards, Request, Get, HttpCode, HttpStatus, Res, Req, UnauthorizedException } from '@nestjs/common';
+import {
+  ApiTags,
+  ApiOperation,
+  ApiBearerAuth,
+  ApiBody,
+  ApiResponse,
+} from '@nestjs/swagger';
+import {
+  Controller,
+  Post,
+  Body,
+  UseGuards,
+  Request,
+  Get,
+  HttpCode,
+  HttpStatus,
+  Res,
+  Req,
+  UnauthorizedException,
+} from '@nestjs/common';
 import type { Response } from 'express';
 import { AuthGuard } from '@nestjs/passport';
 import { AuthService } from '../services/auth.service';
-import { RegisterDto, LoginDto, ResetPasswordDto, NewPasswordDto } from '../dto/auth.dto';
+import {
+  RegisterDto,
+  LoginDto,
+  ResetPasswordDto,
+  NewPasswordDto,
+  VerifyOtpDto,
+} from '../dto/auth.dto';
 import { LocalAuthGuard } from '../guards/local-auth.guard';
 import { JwtAuthGuard } from '@/common/guards/jwt-auth.guard';
 
@@ -83,15 +107,30 @@ export class AuthController {
       secure: process.env.NODE_ENV === 'production',
       maxAge: SEVEN_DAYS_MS,
     });
-    return res.redirect(`${process.env.FRONTEND_URL}/auth/callback?access_token=${session.access_token}`);
+    return res.redirect(
+      `${process.env.FRONTEND_URL}/auth/callback?access_token=${session.access_token}`,
+    );
   }
 
   @Post('forgot-password')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Request password reset' })
+  @ApiOperation({ summary: 'Request password reset OTP' })
   async forgotPassword(@Body() dto: ResetPasswordDto) {
     await this.authService.forgotPassword(dto);
-    return { message: 'If the email exists, a reset link has been sent.' };
+    return {
+      message:
+        'If the email exists, a 6-digit verification code has been sent.',
+    };
+  }
+
+  @Post('verify-otp')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Verify password reset OTP' })
+  @ApiResponse({ status: 200, description: 'OTP verified, reset token issued' })
+  @ApiResponse({ status: 401, description: 'Invalid verification code' })
+  @ApiResponse({ status: 410, description: 'Verification code has expired' })
+  async verifyOtp(@Body() dto: VerifyOtpDto) {
+    return this.authService.verifyOtp(dto);
   }
 
   @Post('reset-password')

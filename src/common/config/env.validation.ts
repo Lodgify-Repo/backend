@@ -1,10 +1,13 @@
 import * as Joi from 'joi';
 
 export const envValidationSchema = Joi.object({
-  ENV: Joi.string().valid('dev', 'staging', 'production', 'test').default('dev'),
+  ENV: Joi.string()
+    .valid('dev', 'staging', 'production', 'test')
+    .default('dev'),
   PORT: Joi.number().default(3000),
   DATABASE_URL: Joi.string().required().messages({
-    'any.required': 'DATABASE_URL is required. Example: postgresql://user:password@localhost:5432/lodgify?schema=public',
+    'any.required':
+      'DATABASE_URL is required. Example: postgresql://user:password@localhost:5432/lodgify?schema=public',
   }),
 
   REDIS_HOST: Joi.string().default('localhost'),
@@ -16,12 +19,26 @@ export const envValidationSchema = Joi.object({
     'any.required': 'JWT_SECRET is required for authentication to function.',
   }),
   JWT_REFRESH_SECRET: Joi.string().required().messages({
-    'any.required': 'JWT_REFRESH_SECRET is required for token refresh to function.',
+    'any.required':
+      'JWT_REFRESH_SECRET is required for token refresh to function.',
   }),
 
   GOOGLE_CLIENT_ID: Joi.string().optional().allow(''),
   GOOGLE_CLIENT_SECRET: Joi.string().optional().allow(''),
 
-  ALLOWED_ORIGINS: Joi.string().optional().allow('').default('http://localhost:4200'),
+  SMTP_HOST: Joi.string().optional().allow(''),
+  SMTP_PORT: Joi.number().default(587),
+  SMTP_SECURE: Joi.boolean().default(false),
+  SMTP_USER: Joi.string().optional().allow(''),
+  SMTP_PASS: Joi.string().optional().allow(''),
+  MAIL_FROM: Joi.string()
+    .optional()
+    .allow('')
+    .default('Lodgify <no-reply@lodgify.local>'),
+
+  ALLOWED_ORIGINS: Joi.string()
+    .optional()
+    .allow('')
+    .default('http://localhost:4200'),
   FRONTEND_URL: Joi.string().uri().optional().default('http://localhost:4200'),
 }).options({ allowUnknown: true });

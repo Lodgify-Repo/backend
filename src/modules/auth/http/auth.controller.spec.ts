@@ -14,15 +14,14 @@ describe('AuthController', () => {
     refreshToken: jest.fn(),
     googleLogin: jest.fn(),
     forgotPassword: jest.fn(),
+    verifyOtp: jest.fn(),
     resetPassword: jest.fn(),
   };
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       controllers: [AuthController],
-      providers: [
-        { provide: AuthService, useValue: mockAuthService },
-      ],
+      providers: [{ provide: AuthService, useValue: mockAuthService }],
     }).compile();
 
     controller = module.get<AuthController>(AuthController);
@@ -39,7 +38,12 @@ describe('AuthController', () => {
 
   describe('register', () => {
     it('should call authService.register', async () => {
-      const dto = { email: 'test@test.com', password: 'password1', firstName: 'John', lastName: 'Doe' };
+      const dto = {
+        email: 'test@test.com',
+        password: 'password1',
+        firstName: 'John',
+        lastName: 'Doe',
+      };
       mockAuthService.register.mockResolvedValue({ id: '1', email: dto.email });
 
       const result = await controller.register(dto as any);
@@ -52,7 +56,7 @@ describe('AuthController', () => {
     it('should return access token and user', async () => {
       const req = { user: { id: '1', email: 'test@test.com' } };
       const res = { cookie: jest.fn() } as unknown as Response;
-      
+
       mockAuthService.login.mockResolvedValue({
         access_token: 'token',
         refresh_token: 'refresh',
@@ -60,8 +64,12 @@ describe('AuthController', () => {
       });
 
       const result = await controller.login(req, res);
-      
-      expect(res.cookie).toHaveBeenCalledWith('refresh_token', 'refresh', expect.any(Object));
+
+      expect(res.cookie).toHaveBeenCalledWith(
+        'refresh_token',
+        'refresh',
+        expect.any(Object),
+      );
       expect(result).toEqual({ access_token: 'token', user: req.user });
     });
   });
@@ -87,16 +95,38 @@ describe('AuthController', () => {
       const req = { cookies: {} };
       const res = { cookie: jest.fn() } as unknown as Response;
 
-      await expect(controller.refresh(req, res)).rejects.toThrow(UnauthorizedException);
+      await expect(controller.refresh(req, res)).rejects.toThrow(
+        UnauthorizedException,
+      );
     });
   });
 
   describe('forgotPassword', () => {
     it('should return success message', async () => {
       mockAuthService.forgotPassword.mockResolvedValue(undefined);
-      
-      const result = await controller.forgotPassword({ email: 'test@test.com' });
-      expect(result.message).toContain('reset link has been sent');
+
+      const result = await controller.forgotPassword({
+        email: 'test@test.com',
+      });
+      expect(result.message).toContain('verification code has been sent');
+    });
+  });
+
+  describe('verifyOtp', () => {
+    it('should return the reset token', async () => {
+      mockAuthService.verifyOtp.mockResolvedValue({
+        resetToken: 'reset-token',
+      });
+
+      const result = await controller.verifyOtp({
+        email: 'test@test.com',
+        otp: '482913',
+      });
+      expect(result).toEqual({ resetToken: 'reset-token' });
+      expect(authService.verifyOtp).toHaveBeenCalledWith({
+        email: 'test@test.com',
+        otp: '482913',
+      });
     });
   });
 });
