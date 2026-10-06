@@ -49,6 +49,7 @@ export class AuthEventListeners
         payload.otp,
         payload.expiresInMinutes,
       );
+      this.logger.info(`Password reset OTP sent to ${payload.email}`);
     } catch (error: unknown) {
       if (error instanceof Error) {
         this.logger.error(
