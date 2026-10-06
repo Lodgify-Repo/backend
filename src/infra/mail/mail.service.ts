@@ -1,4 +1,6 @@
 import { Injectable } from '@nestjs/common';
+import { resolve4 } from 'node:dns/promises';
+import { isIP } from 'node:net';
 import { createTransport, type Transporter } from 'nodemailer';
 import Logger from '@/infra/logger/logger.service';
 
@@ -39,7 +41,9 @@ export class MailService {
       return;
     }
 
-    await this.getTransporter(smtp).sendMail({
+    const transporter = await this.getTransporter(smtp);
+
+    await transporter.sendMail({
       from: smtp.from,
       to,
       subject: 'Your password reset code',
@@ -67,19 +71,35 @@ export class MailService {
     };
   }
 
-  private getTransporter(smtp: SmtpConfig): Transporter {
+  private async getTransporter(smtp: SmtpConfig): Promise<Transporter> {
     if (!this.transporter) {
+      const host = await this.resolveIpv4(smtp.host);
+
       this.transporter = createTransport({
-        host: smtp.host,
+        host,
         port: smtp.port,
         secure: smtp.secure,
         connectionTimeout: CONNECTION_TIMEOUT_MS,
         greetingTimeout: GREETING_TIMEOUT_MS,
         socketTimeout: SOCKET_TIMEOUT_MS,
+        tls: host === smtp.host ? undefined : { servername: smtp.host },
         auth: smtp.user ? { user: smtp.user, pass: smtp.pass } : undefined,
       });
     }
 
     return this.transporter;
+  }
+
+  private async resolveIpv4(host: string): Promise<string> {
+    if (isIP(host)) {
+      return host;
+    }
+
+    try {
+      const [address] = await resolve4(host);
+      return address ?? host;
+    } catch {
+      return host;
+    }
   }
 }
