@@ -12,6 +12,12 @@ export type PasswordResetOtpRequested = {
   readonly expiresInMinutes: number;
 };
 
+export function hasErrorCode(
+  value: unknown,
+): value is Error & { code: unknown } {
+  return value instanceof Error && 'code' in value;
+}
+
 export function isPasswordResetOtpRequested(
   value: unknown,
 ): value is PasswordResetOtpRequested {
@@ -52,8 +58,12 @@ export class AuthEventListeners
       this.logger.info(`Password reset OTP sent`);
     } catch (error: unknown) {
       if (error instanceof Error) {
+        const code =
+          hasErrorCode(error) && typeof error.code === 'string'
+            ? ` [${error.code}]`
+            : '';
         this.logger.error(
-          `Password reset email failed: ${error.message}`,
+          `Password reset email failed${code}: ${error.message}`,
         );
         return;
       }

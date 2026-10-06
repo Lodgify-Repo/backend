@@ -13,6 +13,9 @@ type SmtpConfig = {
 
 const DEFAULT_FROM = 'Lodgify <no-reply@lodgify.local>';
 const DEFAULT_PORT = 587;
+const CONNECTION_TIMEOUT_MS = 10_000;
+const GREETING_TIMEOUT_MS = 10_000;
+const SOCKET_TIMEOUT_MS = 30_000;
 
 function readEnv(name: string): string | undefined {
   const value = process.env[name];
@@ -70,6 +73,9 @@ export class MailService {
         host: smtp.host,
         port: smtp.port,
         secure: smtp.secure,
+        connectionTimeout: CONNECTION_TIMEOUT_MS,
+        greetingTimeout: GREETING_TIMEOUT_MS,
+        socketTimeout: SOCKET_TIMEOUT_MS,
         auth: smtp.user ? { user: smtp.user, pass: smtp.pass } : undefined,
       });
     }
