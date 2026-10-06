@@ -49,11 +49,11 @@ export class AuthEventListeners
         payload.otp,
         payload.expiresInMinutes,
       );
-      this.logger.info(`Password reset OTP sent to ${payload.email}`);
+      this.logger.info(`Password reset OTP sent`);
     } catch (error: unknown) {
       if (error instanceof Error) {
         this.logger.error(
-          `Password reset email failed for ${payload.email}: ${error.message}`,
+          `Password reset email failed: ${error.message}`,
         );
         return;
       }
