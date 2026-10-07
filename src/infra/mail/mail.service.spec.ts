@@ -43,8 +43,13 @@ describe('MailService', () => {
       process.env.MAIL_FROM = 'Lodgify <sender@lodgify.local>';
       delete process.env.SMTP_HOST;
 
-      await service.sendPasswordResetOtp('user@test.com', '482913', 10);
+      const messageId = await service.sendPasswordResetOtp(
+        'user@test.com',
+        '482913',
+        10,
+      );
 
+      expect(messageId).toBe('1');
       expect(fetchMock).toHaveBeenCalledTimes(1);
 
       const [url, init] = fetchMock.mock.calls[0];
@@ -86,8 +91,13 @@ describe('MailService', () => {
       delete process.env.BREVO_API_KEY;
       delete process.env.SMTP_HOST;
 
-      await service.sendPasswordResetOtp('user@test.com', '482913', 10);
+      const messageId = await service.sendPasswordResetOtp(
+        'user@test.com',
+        '482913',
+        10,
+      );
 
+      expect(messageId).toBeNull();
       expect(fetchMock).not.toHaveBeenCalled();
       expect(Logger.getInstance).toHaveBeenCalledWith('mail');
     });

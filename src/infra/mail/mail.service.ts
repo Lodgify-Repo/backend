@@ -58,30 +58,31 @@ export class MailService {
     to: string,
     otp: string,
     expiresInMinutes: number,
-  ): Promise<void> {
+  ): Promise<string | null> {
     const apiKey = readEnv('BREVO_API_KEY');
 
     if (apiKey) {
-      await this.sendViaBrevo(apiKey, to, otp, expiresInMinutes);
-      return;
+      return this.sendViaBrevo(apiKey, to, otp, expiresInMinutes);
     }
 
     const smtp = this.resolveSmtpConfig();
 
     if (!smtp) {
       Logger.getInstance('mail').info(`Password reset OTP for ${to}: ${otp}`);
-      return;
+      return null;
     }
 
     const transporter = await this.getTransporter(smtp);
 
-    await transporter.sendMail({
+    const info = await transporter.sendMail({
       from: smtp.from,
       to,
       subject: 'Your password reset code',
       text: otpTextBody(otp, expiresInMinutes),
       html: otpHtmlBody(otp, expiresInMinutes),
     });
+
+    return info.messageId;
   }
 
   private async sendViaBrevo(
@@ -89,7 +90,7 @@ export class MailService {
     to: string,
     otp: string,
     expiresInMinutes: number,
-  ): Promise<void> {
+  ): Promise<string | null> {
     const sender = parseSender(readEnv('MAIL_FROM') ?? DEFAULT_FROM);
 
     const response = await fetch(BREVO_API_URL, {
@@ -113,6 +114,19 @@ export class MailService {
       const detail = await response.text();
       throw new Error(`Brevo API error ${response.status}: ${detail}`);
     }
+
+    const payload: unknown = await response.json();
+
+    if (
+      typeof payload === 'object' &&
+      payload !== null &&
+      'messageId' in payload
+    ) {
+      const messageId = payload.messageId;
+      return typeof messageId === 'string' ? messageId : null;
+    }
+
+    return null;
   }
 
   private resolveSmtpConfig(): SmtpConfig | null {
