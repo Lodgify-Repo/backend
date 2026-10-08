@@ -18,28 +18,13 @@ const DEFAULT_PORT = 587;
 const CONNECTION_TIMEOUT_MS = 10_000;
 const GREETING_TIMEOUT_MS = 10_000;
 const SOCKET_TIMEOUT_MS = 30_000;
-const BREVO_API_URL = 'https://api.brevo.com/v3/smtp/email';
-const BREVO_TIMEOUT_MS = 10_000;
-
-type BrevoSender = {
-  readonly name: string;
-  readonly email: string;
-};
+const RESEND_API_URL = 'https://api.resend.com/emails';
+const RESEND_TIMEOUT_MS = 10_000;
 
 function readEnv(name: string): string | undefined {
   const value = process.env[name];
 
   return value === '' ? undefined : value;
-}
-
-function parseSender(from: string): BrevoSender {
-  const match = /^([^<]*)<([^>]+)>$/.exec(from.trim());
-
-  if (!match) {
-    return { name: '', email: from.trim() };
-  }
-
-  return { name: match[1].trim(), email: match[2].trim() };
 }
 
 function otpTextBody(otp: string, expiresInMinutes: number): string {
@@ -58,75 +43,58 @@ export class MailService {
     to: string,
     otp: string,
     expiresInMinutes: number,
-  ): Promise<string | null> {
-    const apiKey = readEnv('BREVO_API_KEY');
+  ): Promise<void> {
+    const apiKey = readEnv('RESEND_API_KEY');
 
     if (apiKey) {
-      return this.sendViaBrevo(apiKey, to, otp, expiresInMinutes);
+      await this.sendViaResend(apiKey, to, otp, expiresInMinutes);
+      return;
     }
 
     const smtp = this.resolveSmtpConfig();
 
     if (!smtp) {
       Logger.getInstance('mail').info(`Password reset OTP for ${to}: ${otp}`);
-      return null;
+      return;
     }
 
     const transporter = await this.getTransporter(smtp);
 
-    const info = await transporter.sendMail({
+    await transporter.sendMail({
       from: smtp.from,
       to,
       subject: 'Your password reset code',
       text: otpTextBody(otp, expiresInMinutes),
       html: otpHtmlBody(otp, expiresInMinutes),
     });
-
-    return info.messageId;
   }
 
-  private async sendViaBrevo(
+  private async sendViaResend(
     apiKey: string,
     to: string,
     otp: string,
     expiresInMinutes: number,
-  ): Promise<string | null> {
-    const sender = parseSender(readEnv('MAIL_FROM') ?? DEFAULT_FROM);
-
-    const response = await fetch(BREVO_API_URL, {
+  ): Promise<void> {
+    const response = await fetch(RESEND_API_URL, {
       method: 'POST',
       headers: {
-        accept: 'application/json',
+        authorization: `Bearer ${apiKey}`,
         'content-type': 'application/json',
-        'api-key': apiKey,
       },
       body: JSON.stringify({
-        sender,
-        to: [{ email: to }],
+        from: readEnv('MAIL_FROM') ?? DEFAULT_FROM,
+        to: [to],
         subject: 'Your password reset code',
-        textContent: otpTextBody(otp, expiresInMinutes),
-        htmlContent: otpHtmlBody(otp, expiresInMinutes),
+        text: otpTextBody(otp, expiresInMinutes),
+        html: otpHtmlBody(otp, expiresInMinutes),
       }),
-      signal: AbortSignal.timeout(BREVO_TIMEOUT_MS),
+      signal: AbortSignal.timeout(RESEND_TIMEOUT_MS),
     });
 
     if (!response.ok) {
       const detail = await response.text();
-      throw new Error(`Brevo API error ${response.status}: ${detail}`);
+      throw new Error(`Resend API error ${response.status}: ${detail}`);
     }
-
-    const payload: unknown = await response.json();
-
-    if (
-      typeof payload === 'object' &&
-      payload !== null &&
-      'messageId' in payload
-    ) {
-      const messageId = payload.messageId;
-      return typeof messageId === 'string' ? messageId : null;
-    }
-
-    return null;
   }
 
   private resolveSmtpConfig(): SmtpConfig | null {

@@ -50,14 +50,12 @@ export class AuthEventListeners
     }
 
     try {
-      const messageId = await this.mail.sendPasswordResetOtp(
+      await this.mail.sendPasswordResetOtp(
         payload.email,
         payload.otp,
         payload.expiresInMinutes,
       );
-      this.logger.info(
-        `Password reset OTP sent to ${payload.email}${messageId ? ` [${messageId}]` : ''}`,
-      );
+      this.logger.info(`Password reset OTP sent to ${payload.email}`);
     } catch (error: unknown) {
       if (error instanceof Error) {
         const code =

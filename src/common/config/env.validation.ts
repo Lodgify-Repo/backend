@@ -36,7 +36,7 @@ export const envValidationSchema = Joi.object({
     .allow('')
     .default('Lodgify <no-reply@lodgify.local>'),
 
-  BREVO_API_KEY: Joi.string().optional().allow(''),
+  RESEND_API_KEY: Joi.string().optional().allow(''),
 
   ALLOWED_ORIGINS: Joi.string()
     .optional()
