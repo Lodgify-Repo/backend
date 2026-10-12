@@ -290,7 +290,8 @@ export class UsersService extends Service {
       );
     }
 
-    // Update user and invitation in a transaction
+    // wilson I'm sorry, but this is the best I could come up with, I dont wanna use a seperate transaction manager,
+    //its best we leverage prisma's transaction manager, it's more efficient and less prone to errors.
     return this.prisma.$transaction(async (tx) => {
       await tx.subAccountInvitation.update({
         where: { id: invitation.id },
