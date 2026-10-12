@@ -1,6 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { MailService } from './mail.service';
 import Logger from '@/infra/logger/logger.service';
+import { Role } from '@prisma/client';
 
 jest.mock('@/infra/logger/logger.service', () => ({
   __esModule: true,
@@ -90,6 +91,33 @@ describe('MailService', () => {
 
       expect(fetchMock).not.toHaveBeenCalled();
       expect(Logger.getInstance).toHaveBeenCalledWith('mail');
+    });
+  });
+
+  describe('invitation', () => {
+    it('should send the invitation stating the role and accept link', async () => {
+      process.env.RESEND_API_KEY = 'resend-test-key';
+      process.env.MAIL_FROM = 'Lodgify <sender@lodgify.local>';
+      delete process.env.SMTP_HOST;
+
+      await service.sendInvitation('staff@test.com', {
+        role: Role.MANAGER,
+        link: 'http://localhost:4200/register?token=abc',
+        inviterName: 'Ada Boss',
+        expiresInDays: 7,
+      });
+
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+
+      const [, init] = fetchMock.mock.calls[0];
+      const rawBody = init?.body;
+      expect(typeof rawBody).toBe('string');
+
+      if (typeof rawBody === 'string') {
+        expect(rawBody).toContain('Manager');
+        expect(rawBody).toContain('Ada Boss');
+        expect(rawBody).toContain('http://localhost:4200/register?token=abc');
+      }
     });
   });
 });

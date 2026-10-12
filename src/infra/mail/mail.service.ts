@@ -35,6 +35,17 @@ function otpHtmlBody(otp: string, expiresInMinutes: number): string {
   return `<p>Your Lodgify password reset code is <strong>${otp}</strong>.</p><p>It expires in ${expiresInMinutes} minutes.</p>`;
 }
 
+function toRoleLabel(role: string): string {
+  return role.charAt(0).toUpperCase() + role.slice(1).toLowerCase();
+}
+
+export type InvitationMail = {
+  readonly role: string;
+  readonly link: string;
+  readonly inviterName: string;
+  readonly expiresInDays: number;
+};
+
 @Injectable()
 export class MailService {
   private transporter: Transporter | null = null;
@@ -44,36 +55,58 @@ export class MailService {
     otp: string,
     expiresInMinutes: number,
   ): Promise<void> {
+    await this.deliver(
+      to,
+      'Your password reset code',
+      otpTextBody(otp, expiresInMinutes),
+      otpHtmlBody(otp, expiresInMinutes),
+      `Password reset OTP for ${to}: ${otp}`,
+    );
+  }
+
+  async sendInvitation(to: string, invitation: InvitationMail): Promise<void> {
+    const roleLabel = toRoleLabel(invitation.role);
+
+    await this.deliver(
+      to,
+      `You've been invited to join Lodgify as a ${roleLabel}`,
+      `Hi,\n\n${invitation.inviterName} has invited you to join Lodgify as a ${roleLabel}.\n\nGet started here: ${invitation.link}\n\nThis invitation expires in ${invitation.expiresInDays} days.`,
+      `<p>Hi,</p><p>${invitation.inviterName} has invited you to join Lodgify as a ${roleLabel}.</p><p><a href="${invitation.link}">Accept your invitation here</a>.</p><p>This invitation expires in ${invitation.expiresInDays} days.</p>`,
+      `Invitation email to ${to}: ${invitation.link}`,
+    );
+  }
+
+  private async deliver(
+    to: string,
+    subject: string,
+    text: string,
+    html: string,
+    devFallback: string,
+  ): Promise<void> {
     const apiKey = readEnv('RESEND_API_KEY');
 
     if (apiKey) {
-      await this.sendViaResend(apiKey, to, otp, expiresInMinutes);
+      await this.sendViaResend(apiKey, to, subject, text, html);
       return;
     }
 
     const smtp = this.resolveSmtpConfig();
 
     if (!smtp) {
-      Logger.getInstance('mail').info(`Password reset OTP for ${to}: ${otp}`);
+      Logger.getInstance('mail').info(devFallback);
       return;
     }
 
     const transporter = await this.getTransporter(smtp);
 
-    await transporter.sendMail({
-      from: smtp.from,
-      to,
-      subject: 'Your password reset code',
-      text: otpTextBody(otp, expiresInMinutes),
-      html: otpHtmlBody(otp, expiresInMinutes),
-    });
+    await transporter.sendMail({ from: smtp.from, to, subject, text, html });
   }
-
   private async sendViaResend(
     apiKey: string,
     to: string,
-    otp: string,
-    expiresInMinutes: number,
+    subject: string,
+    text: string,
+    html: string,
   ): Promise<void> {
     const response = await fetch(RESEND_API_URL, {
       method: 'POST',
@@ -84,9 +117,9 @@ export class MailService {
       body: JSON.stringify({
         from: readEnv('MAIL_FROM') ?? DEFAULT_FROM,
         to: [to],
-        subject: 'Your password reset code',
-        text: otpTextBody(otp, expiresInMinutes),
-        html: otpHtmlBody(otp, expiresInMinutes),
+        subject,
+        text,
+        html,
       }),
       signal: AbortSignal.timeout(RESEND_TIMEOUT_MS),
     });

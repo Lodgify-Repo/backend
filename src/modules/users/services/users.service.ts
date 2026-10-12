@@ -1,10 +1,25 @@
 import { Injectable } from '@nestjs/common';
 import { Service } from '@/common/domain/base.service';
 import { PrismaService } from '@/infra/database/prisma.service';
+import { EventBusService } from '@/infra/eventbus';
+import {
+  USER_INVITATION_SENT,
+  type SubAccountInvited,
+} from '@/common/events/user.events';
 import { UpdateProfileDto } from '../dto/update-profile.dto';
-import { InviteSubAccountDto, AcceptSubAccountDto } from '../dto/sub-account.dto';
-import { CompleteOnboardingDto, ActivateOwnerProfileDto, ActivateAgentProfileDto } from '../dto/onboarding.dto';
-import { UserCapabilities, AccountPersona } from '@/common/domain/user-capability.types';
+import {
+  InviteSubAccountDto,
+  AcceptSubAccountDto,
+} from '../dto/sub-account.dto';
+import {
+  CompleteOnboardingDto,
+  ActivateOwnerProfileDto,
+  ActivateAgentProfileDto,
+} from '../dto/onboarding.dto';
+import {
+  UserCapabilities,
+  AccountPersona,
+} from '@/common/domain/user-capability.types';
 import * as crypto from 'crypto';
 import { DomainError } from '@/common/domain/error';
 import { UserErrorCodes } from '../errors';
@@ -12,12 +27,35 @@ import { User, Role } from '@prisma/client';
 
 export type UserProfile = Pick<
   User,
-  'id' | 'email' | 'firstName' | 'lastName' | 'role' | 'phone' | 'avatarUrl' | 'isActive' | 'createdAt'
+  | 'id'
+  | 'email'
+  | 'firstName'
+  | 'lastName'
+  | 'role'
+  | 'phone'
+  | 'avatarUrl'
+  | 'isActive'
+  | 'createdAt'
 >;
+
+const INVITATION_TTL_DAYS = 7;
+
+function formatInviterName(
+  inviter: Pick<User, 'firstName' | 'lastName' | 'email'> | null,
+): string {
+  const fullName = inviter
+    ? `${inviter.firstName} ${inviter.lastName}`.trim()
+    : '';
+
+  return fullName || inviter?.email || 'Your administrator';
+}
 
 @Injectable()
 export class UsersService extends Service {
-  constructor(private readonly prisma: PrismaService) {
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly events: EventBusService,
+  ) {
     super();
   }
 
@@ -26,7 +64,7 @@ export class UsersService extends Service {
       where: { id: userId },
       include: { ownerProfile: true, agentProfile: true },
     });
-    
+
     if (!user) {
       throw new DomainError(UserErrorCodes.USER_NOT_FOUND);
     }
@@ -48,13 +86,13 @@ export class UsersService extends Service {
 
   async completeOnboarding(userId: string, dto: CompleteOnboardingDto) {
     const capabilities = await this.getUserCapabilities(userId);
-    
+
     if (dto.intent === 'OWNER' && !capabilities.isOwner) {
       await this.activateOwnerProfile(userId, {});
     } else if (dto.intent === 'AGENT' && !capabilities.isAgent) {
       throw new DomainError(
-        UserErrorCodes.INVALID_PROFILE_DATA, 
-        'Agent profile requires explicit details via agent activation endpoint'
+        UserErrorCodes.INVALID_PROFILE_DATA,
+        'Agent profile requires explicit details via agent activation endpoint',
       );
     }
 
@@ -62,25 +100,35 @@ export class UsersService extends Service {
   }
 
   async activateOwnerProfile(userId: string, dto: ActivateOwnerProfileDto) {
-    const existingProfile = await this.prisma.ownerProfile.findUnique({ where: { userId } });
+    const existingProfile = await this.prisma.ownerProfile.findUnique({
+      where: { userId },
+    });
     if (existingProfile) {
-      throw new DomainError(UserErrorCodes.PROFILE_ALREADY_EXISTS, 'Owner profile already activated');
+      throw new DomainError(
+        UserErrorCodes.PROFILE_ALREADY_EXISTS,
+        'Owner profile already activated',
+      );
     }
 
     await this.prisma.ownerProfile.create({
       data: {
         userId,
         businessName: dto.businessName,
-      }
+      },
     });
 
     return this.getUserCapabilities(userId);
   }
 
   async activateAgentProfile(userId: string, dto: ActivateAgentProfileDto) {
-    const existingProfile = await this.prisma.agentProfile.findUnique({ where: { userId } });
+    const existingProfile = await this.prisma.agentProfile.findUnique({
+      where: { userId },
+    });
     if (existingProfile) {
-      throw new DomainError(UserErrorCodes.PROFILE_ALREADY_EXISTS, 'Agent profile already activated');
+      throw new DomainError(
+        UserErrorCodes.PROFILE_ALREADY_EXISTS,
+        'Agent profile already activated',
+      );
     }
 
     await this.prisma.agentProfile.create({
@@ -90,7 +138,7 @@ export class UsersService extends Service {
         organizationName: dto.organizationName,
         licenseNumber: dto.licenseNumber,
         defaultCommissionRate: dto.defaultCommissionRate,
-      }
+      },
     });
 
     return this.getUserCapabilities(userId);
@@ -156,12 +204,24 @@ export class UsersService extends Service {
 
   async inviteSubAccount(parentId: string, dto: InviteSubAccountDto) {
     if (dto.role === Role.ADMIN || dto.role === Role.SUPER_ADMIN) {
-      throw new DomainError(UserErrorCodes.INVALID_PROFILE_DATA, 'Owners cannot invite administrator sub-accounts');
+      throw new DomainError(
+        UserErrorCodes.INVALID_PROFILE_DATA,
+        'Owners cannot invite administrator sub-accounts',
+      );
     }
 
-    const existingUser = await this.prisma.user.findUnique({ where: { email: dto.email } });
+    const [existingUser, inviter] = await Promise.all([
+      this.prisma.user.findUnique({ where: { email: dto.email } }),
+      this.prisma.user.findUnique({
+        where: { id: parentId },
+        select: { firstName: true, lastName: true, email: true },
+      }),
+    ]);
+
     const token = crypto.randomUUID();
-    const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+    const expiresAt = new Date(
+      Date.now() + INVITATION_TTL_DAYS * 24 * 60 * 60 * 1000,
+    );
 
     const invitation = await this.prisma.subAccountInvitation.create({
       data: {
@@ -173,13 +233,22 @@ export class UsersService extends Service {
       },
     });
 
-    const frontendUrl = (process.env.FRONTEND_URL || 'http://localhost:4200').replace(/\/+$/, '');
+    const frontendUrl = (
+      process.env.FRONTEND_URL || 'http://localhost:4200'
+    ).replace(/\/+$/, '');
 
     const link = existingUser
       ? `${frontendUrl}/invitations/accept?token=${token}`
       : `${frontendUrl}/register?token=${token}`;
 
-    this.logger.info(`[Invitation] Email to ${dto.email}: ${link}`);
+    this.events.emit(USER_INVITATION_SENT, {
+      event: USER_INVITATION_SENT,
+      email: dto.email,
+      role: dto.role,
+      link,
+      inviterName: formatInviterName(inviter),
+      expiresInDays: INVITATION_TTL_DAYS,
+    } satisfies SubAccountInvited);
 
     return invitation;
   }
@@ -190,15 +259,24 @@ export class UsersService extends Service {
     });
 
     if (!invitation) {
-      throw new DomainError(UserErrorCodes.RESOURCE_NOT_FOUND, 'Invitation not found or invalid token');
+      throw new DomainError(
+        UserErrorCodes.RESOURCE_NOT_FOUND,
+        'Invitation not found or invalid token',
+      );
     }
 
     if (invitation.status !== 'PENDING') {
-      throw new DomainError(UserErrorCodes.VALIDATION_FAILED, 'Invitation is no longer pending');
+      throw new DomainError(
+        UserErrorCodes.VALIDATION_FAILED,
+        'Invitation is no longer pending',
+      );
     }
 
     if (new Date() > invitation.expiresAt) {
-      throw new DomainError(UserErrorCodes.VALIDATION_FAILED, 'Invitation has expired');
+      throw new DomainError(
+        UserErrorCodes.VALIDATION_FAILED,
+        'Invitation has expired',
+      );
     }
 
     const user = await this.prisma.user.findUnique({
@@ -206,7 +284,10 @@ export class UsersService extends Service {
     });
 
     if (!user || user.email !== invitation.email) {
-      throw new DomainError(UserErrorCodes.UNAUTHORIZED, 'Invitation email does not match your account');
+      throw new DomainError(
+        UserErrorCodes.UNAUTHORIZED,
+        'Invitation email does not match your account',
+      );
     }
 
     // Update user and invitation in a transaction
@@ -253,7 +334,11 @@ export class UsersService extends Service {
     });
   }
 
-  async setSubAccountStatus(parentId: string, subAccountId: string, isActive: boolean) {
+  async setSubAccountStatus(
+    parentId: string,
+    subAccountId: string,
+    isActive: boolean,
+  ) {
     return this.prisma.user.update({
       where: { id: subAccountId, parentId },
       data: { isActive },

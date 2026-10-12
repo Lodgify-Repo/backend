@@ -11,6 +11,7 @@ import { DatabaseModule } from './infra/database/database.module';
 import { EventBusModule } from './infra/eventbus.module';
 import { MailModule } from './infra/mail/mail.module';
 import { AuthEventListeners } from './common/events/auth.events';
+import { UserEventListeners } from './common/events/user.events';
 import { AuthModule } from './modules/auth/auth.module';
 import { UsersModule } from './modules/users/users.module';
 import { AdminModule } from './modules/admin/admin.module';
@@ -33,7 +34,7 @@ import { TenantContextMiddleware } from './common/middleware/tenant-context.midd
     PropertiesModule,
   ],
   controllers: [AppController],
-  providers: [AppService, AuthEventListeners],
+  providers: [AppService, AuthEventListeners, UserEventListeners],
 })
 export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer) {

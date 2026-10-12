@@ -1,6 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { UsersService } from './users.service';
 import { PrismaService } from '@/infra/database/prisma.service';
+import { EventBusService } from '@/infra/eventbus';
 import { DomainError } from '@/common/domain/error';
 import { Role } from '@prisma/client';
 
@@ -19,11 +20,16 @@ describe('UsersService', () => {
     },
   };
 
+  const mockEvents = {
+    emit: jest.fn(),
+  };
+
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         UsersService,
         { provide: PrismaService, useValue: mockPrisma },
+        { provide: EventBusService, useValue: mockEvents },
       ],
     }).compile();
 
@@ -58,7 +64,7 @@ describe('UsersService', () => {
     it('should update user profile', async () => {
       const user = { id: '1', email: 'test@test.com' };
       const updatedUser = { ...user, firstName: 'Updated' };
-      
+
       mockPrisma.user.findUnique.mockResolvedValue(user);
       mockPrisma.user.update.mockResolvedValue(updatedUser);
 
@@ -71,7 +77,7 @@ describe('UsersService', () => {
   describe('deleteAccount', () => {
     it('should soft delete user account', async () => {
       mockPrisma.user.update.mockResolvedValue({ id: '1' });
-      
+
       const result = await service.deleteAccount('1');
       expect(result).toEqual({ success: true });
       expect(mockPrisma.user.update).toHaveBeenCalledWith(
@@ -83,20 +89,69 @@ describe('UsersService', () => {
   });
 
   describe('inviteSubAccount', () => {
-    it('should create an invitation and format link with FRONTEND_URL', async () => {
+    it('should create an invitation and emit the invite event with a register link', async () => {
       const originalFrontendUrl = process.env.FRONTEND_URL;
       process.env.FRONTEND_URL = 'http://localhost:4200';
-      const loggerSpy = jest.spyOn((service as any).logger, 'info');
 
-      mockPrisma.user.findUnique.mockResolvedValue(null); 
+      mockPrisma.user.findUnique
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce({
+          id: 'parent-1',
+          firstName: 'Ada',
+          lastName: 'Boss',
+          email: 'owner@test.com',
+        });
       mockPrisma.subAccountInvitation.create.mockResolvedValue({ id: 'inv-1' });
 
-      const result = await service.inviteSubAccount('parent-1', { email: 'staff@test.com', role: Role.MANAGER });
-      
+      const result = await service.inviteSubAccount('parent-1', {
+        email: 'staff@test.com',
+        role: Role.MANAGER,
+      });
+
       expect(result.id).toBe('inv-1');
       expect(mockPrisma.subAccountInvitation.create).toHaveBeenCalled();
-      expect(loggerSpy).toHaveBeenCalledWith(
-        expect.stringContaining('http://localhost:4200/register?token='),
+      expect(mockEvents.emit).toHaveBeenCalledWith(
+        'user:sub-account-invited',
+        expect.objectContaining({
+          email: 'staff@test.com',
+          role: Role.MANAGER,
+          inviterName: 'Ada Boss',
+          expiresInDays: 7,
+          link: expect.stringContaining(
+            'http://localhost:4200/register?token=',
+          ),
+        }),
+      );
+
+      process.env.FRONTEND_URL = originalFrontendUrl;
+    });
+
+    it('should link existing users to the accept page', async () => {
+      const originalFrontendUrl = process.env.FRONTEND_URL;
+      process.env.FRONTEND_URL = 'http://localhost:4200';
+
+      mockPrisma.user.findUnique
+        .mockResolvedValueOnce({ id: '2', email: 'staff@test.com' })
+        .mockResolvedValueOnce({
+          id: 'parent-1',
+          firstName: 'Ada',
+          lastName: 'Boss',
+          email: 'owner@test.com',
+        });
+      mockPrisma.subAccountInvitation.create.mockResolvedValue({ id: 'inv-2' });
+
+      await service.inviteSubAccount('parent-1', {
+        email: 'staff@test.com',
+        role: Role.MANAGER,
+      });
+
+      expect(mockEvents.emit).toHaveBeenCalledWith(
+        'user:sub-account-invited',
+        expect.objectContaining({
+          link: expect.stringContaining(
+            'http://localhost:4200/invitations/accept?token=',
+          ),
+        }),
       );
 
       process.env.FRONTEND_URL = originalFrontendUrl;
