@@ -2,24 +2,11 @@ import { Injectable } from '@nestjs/common';
 import { Service } from '@/common/domain/base.service';
 import { PrismaService } from '@/infra/database/prisma.service';
 import { EventBusService } from '@/infra/eventbus';
-import {
-  USER_INVITATION_SENT,
-  type SubAccountInvited,
-} from '@/common/events/user.events';
+import {USER_INVITATION_SENT,type SubAccountInvited,} from '@/common/events/user.events';
 import { UpdateProfileDto } from '../dto/update-profile.dto';
-import {
-  InviteSubAccountDto,
-  AcceptSubAccountDto,
-} from '../dto/sub-account.dto';
-import {
-  CompleteOnboardingDto,
-  ActivateOwnerProfileDto,
-  ActivateAgentProfileDto,
-} from '../dto/onboarding.dto';
-import {
-  UserCapabilities,
-  AccountPersona,
-} from '@/common/domain/user-capability.types';
+import {InviteSubAccountDto,AcceptSubAccountDto,} from '../dto/sub-account.dto';
+import {CompleteOnboardingDto,ActivateOwnerProfileDto,ActivateAgentProfileDto,} from '../dto/onboarding.dto';
+import {UserCapabilities,AccountPersona,} from '@/common/domain/user-capability.types';
 import * as crypto from 'crypto';
 import { DomainError } from '@/common/domain/error';
 import { UserErrorCodes } from '../errors';
