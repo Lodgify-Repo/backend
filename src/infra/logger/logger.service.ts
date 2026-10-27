@@ -1,5 +1,6 @@
 import { LOG_DIR } from '@/common/constants';
-import { existsSync, mkdirSync } from 'node:fs';
+import { accessSync, constants, existsSync, mkdirSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import winston, { type Logger as WinLogger } from 'winston';
 
@@ -7,52 +8,83 @@ type LogFiles = 'server' | 'http' | 'access' | 'db' | 'mail' | 'payment';
 
 class Logger {
   private static instances: Map<LogFiles, WinLogger> = new Map();
-  private static logDir: string | null = null;
+  private static logDir: string | null | undefined = undefined;
 
-  private static initLogDir(): string {
-    if (this.logDir) return this.logDir;
-
-    const dir = join(process.cwd(), LOG_DIR);
-    if (!existsSync(dir)) {
-      mkdirSync(dir, { recursive: true });
+  private static tryDir(dir: string): string | null {
+    try {
+      if (!existsSync(dir)) {
+        mkdirSync(dir, { recursive: true });
+      }
+      accessSync(dir, constants.W_OK);
+      return dir;
+    } catch {
+      return null;
     }
-    this.logDir = dir;
-    return dir;
+  }
+
+  private static initLogDir(): string | null {
+    if (this.logDir !== undefined) return this.logDir;
+
+    if (process.env.LOG_TO_FILE === 'false') {
+      this.logDir = null;
+      return null;
+    }
+
+    const candidates = [
+      process.env.LOG_DIR,
+      join(process.cwd(), LOG_DIR),
+      join(tmpdir(), 'logs'),
+    ].filter((d): d is string => Boolean(d));
+
+    for (const candidate of candidates) {
+      const resolved = this.tryDir(candidate);
+      if (resolved) {
+        this.logDir = resolved;
+        return resolved;
+      }
+    }
+
+    console.warn('[Logger] No writable log directory found, using console logging only.');
+    this.logDir = null;
+    return null;
   }
 
   private static createLogger(filename: LogFiles): WinLogger {
     const logDir = this.initLogDir();
 
-    const logger = winston.createLogger({
+    const transports: winston.transport[] = [new winston.transports.Console()];
+
+    if (logDir) {
+      transports.push(
+        new winston.transports.File({
+          filename: join(logDir, `${filename}.log`),
+        }),
+      );
+    }
+
+    return winston.createLogger({
       level: 'info',
       format: winston.format.combine(
         winston.format.timestamp({ format: 'YYYY-MM-DD HH:mm:ss' }),
         winston.format.errors({ stack: true }),
         winston.format.printf(({ timestamp, level, message, stack }) => {
-          return stack ? `[${timestamp}] ${level.toUpperCase()}: ${message}\n${stack}` : `[${timestamp}] ${level.toUpperCase()}: ${message}`;
-        })
-      ),
-      transports: [
-        new winston.transports.Console(),
-        new winston.transports.File({
-          filename: join(logDir, `${filename}.log`),
+          return stack
+            ? `[${timestamp}] ${level.toUpperCase()}: ${message}\n${stack}`
+            : `[${timestamp}] ${level.toUpperCase()}: ${message}`;
         }),
-      ],
+      ),
+      transports,
     });
-
-    return logger;
   }
 
   public static getInstance(filename: LogFiles): WinLogger {
     if (!this.instances.has(filename)) {
-      const logger = this.createLogger(filename);
-      this.instances.set(filename, logger);
+      this.instances.set(filename, this.createLogger(filename));
     }
     return this.instances.get(filename)!;
   }
 
-
-  public static getLogDir(): string {
+  public static getLogDir(): string | null {
     return this.initLogDir();
   }
 
@@ -63,7 +95,11 @@ class Logger {
   public static getLogFilePath(filename: string): string | null {
     const allowed = this.getAvailableLogFiles() as string[];
     if (!allowed.includes(filename)) return null;
-    return join(this.initLogDir(), `${filename}.log`);
+
+    const dir = this.initLogDir();
+    if (!dir) return null;
+
+    return join(dir, `${filename}.log`);
   }
 }
 
