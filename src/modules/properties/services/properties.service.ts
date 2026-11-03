@@ -1,9 +1,39 @@
 import { Injectable, ForbiddenException, NotFoundException } from '@nestjs/common';
+import { Prisma, Property, PropertyStatus } from '@prisma/client';
 import { Service } from '@/common/domain/base.service';
 import { PrismaService } from '@/infra/database/prisma.service';
 import { CreatePropertyDto, AuthorizeAgentDto, RespondAuthorizationDto } from '../dto/property.dto';
 import { AssignPropertyStaffDto } from '../dto/assignment.dto';
+import { SearchPropertiesDto } from '../dto/search-properties.dto';
 import { DomainError } from '@/common/domain/error';
+
+const SEARCH_SCAN_LIMIT = 200;
+const DEFAULT_RESULT_LIMIT = 24;
+const NEARBY_RADIUS_KM = 100;
+
+interface SearchableMetadata {
+  location?: string;
+  imageUrl?: string;
+  type?: string;
+  rating?: number;
+  bedrooms?: number;
+  lat?: number;
+  lng?: number;
+}
+
+export interface SearchResultItem {
+  id: string;
+  title: string;
+  category: string;
+  status: string;
+  price: number;
+  location: string | null;
+  imageUrl: string | null;
+  type: string | null;
+  rating: number | null;
+  bedrooms: number | null;
+  distanceKm: number | null;
+}
 
 @Injectable()
 export class PropertiesService extends Service {
@@ -267,5 +297,178 @@ export class PropertiesService extends Service {
       },
       orderBy: { createdAt: 'desc' },
     });
+  }
+
+  async searchProperties(dto: SearchPropertiesDto) {
+    const where: Prisma.PropertyWhereInput = {
+      status: { not: PropertyStatus.DELISTED },
+    };
+
+    if (dto.category) {
+      where.category = dto.category;
+    }
+
+    if (dto.minPrice !== undefined || dto.maxPrice !== undefined) {
+      where.price = {
+        ...(dto.minPrice !== undefined ? { gte: dto.minPrice } : {}),
+        ...(dto.maxPrice !== undefined ? { lte: dto.maxPrice } : {}),
+      };
+    }
+
+    const properties = await this.prisma.property.findMany({
+      where,
+      orderBy: { createdAt: 'desc' },
+      take: SEARCH_SCAN_LIMIT,
+    });
+
+    const matched = properties
+      .map((property) => ({
+        property,
+        metadata: this.readSearchMetadata(property.metadata),
+      }))
+      .filter(({ property, metadata }) => this.matchesQuery(property, metadata, dto.q))
+      .filter(({ metadata }) => this.matchesType(metadata, dto.type))
+      .filter(({ metadata }) => this.matchesRating(metadata, dto.rating))
+      .map(({ property, metadata }) => this.toSearchResult(property, metadata, dto));
+
+    const nearby = this.filterNearby(matched, dto.lat, dto.lng);
+    const limit = dto.limit ?? DEFAULT_RESULT_LIMIT;
+
+    return {
+      total: nearby.length,
+      results: nearby.slice(0, limit),
+    };
+  }
+
+  private matchesQuery(
+    property: Property,
+    metadata: SearchableMetadata,
+    query?: string,
+  ): boolean {
+    const term = query?.trim().toLowerCase();
+    if (!term) {
+      return true;
+    }
+
+    const haystack = [property.title, metadata.location, metadata.type]
+      .filter((value): value is string => typeof value === 'string')
+      .map((value) => value.toLowerCase());
+
+    return haystack.some((value) => value.includes(term));
+  }
+
+  private matchesType(metadata: SearchableMetadata, type?: string): boolean {
+    if (!type) {
+      return true;
+    }
+    return metadata.type?.toLowerCase() === type.toLowerCase();
+  }
+
+  private matchesRating(metadata: SearchableMetadata, rating?: number): boolean {
+    if (rating === undefined) {
+      return true;
+    }
+    return typeof metadata.rating === 'number' && metadata.rating >= rating;
+  }
+
+  private toSearchResult(
+    property: Property,
+    metadata: SearchableMetadata,
+    dto: SearchPropertiesDto,
+  ): SearchResultItem {
+    return {
+      id: property.id,
+      title: property.title,
+      category: property.category,
+      status: property.status,
+      price: Number(property.price),
+      location: metadata.location ?? null,
+      imageUrl: metadata.imageUrl ?? null,
+      type: metadata.type ?? null,
+      rating: metadata.rating ?? null,
+      bedrooms: metadata.bedrooms ?? null,
+      distanceKm: this.distanceKm(dto.lat, dto.lng, metadata.lat, metadata.lng),
+    };
+  }
+
+  private filterNearby(
+    results: SearchResultItem[],
+    lat?: number,
+    lng?: number,
+  ): SearchResultItem[] {
+    if (lat === undefined || lng === undefined) {
+      return results;
+    }
+
+    return results
+      .filter(
+        (result) =>
+          result.distanceKm !== null && result.distanceKm <= NEARBY_RADIUS_KM,
+      )
+      .sort((a, b) => (a.distanceKm ?? 0) - (b.distanceKm ?? 0));
+  }
+
+  private distanceKm(
+    fromLat?: number,
+    fromLng?: number,
+    toLat?: number,
+    toLng?: number,
+  ): number | null {
+    if (
+      fromLat === undefined ||
+      fromLng === undefined ||
+      toLat === undefined ||
+      toLng === undefined
+    ) {
+      return null;
+    }
+
+    const earthRadiusKm = 6371;
+    const deltaLat = this.toRadians(toLat - fromLat);
+    const deltaLng = this.toRadians(toLng - fromLng);
+    const a =
+      Math.sin(deltaLat / 2) ** 2 +
+      Math.cos(this.toRadians(fromLat)) *
+        Math.cos(this.toRadians(toLat)) *
+        Math.sin(deltaLng / 2) ** 2;
+
+    return Math.round(2 * earthRadiusKm * Math.asin(Math.sqrt(a)) * 10) / 10;
+  }
+
+  private toRadians(value: number): number {
+    return (value * Math.PI) / 180;
+  }
+
+  private readSearchMetadata(value: Prisma.JsonValue | null): SearchableMetadata {
+    if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+      return {};
+    }
+
+    const record = value as Record<string, unknown>;
+
+    return {
+      location: this.readString(record['location']),
+      imageUrl: this.readString(record['imageUrl']),
+      type: this.readString(record['type']),
+      rating: this.readNumber(record['rating']),
+      bedrooms: this.readNumber(record['bedrooms']),
+      lat: this.readNumber(record['lat']),
+      lng: this.readNumber(record['lng']),
+    };
+  }
+
+  private readString(value: unknown): string | undefined {
+    return typeof value === 'string' && value.trim() !== '' ? value : undefined;
+  }
+
+  private readNumber(value: unknown): number | undefined {
+    if (typeof value === 'number') {
+      return Number.isFinite(value) ? value : undefined;
+    }
+    if (typeof value === 'string' && value.trim() !== '') {
+      const parsed = Number(value);
+      return Number.isFinite(parsed) ? parsed : undefined;
+    }
+    return undefined;
   }
 }
