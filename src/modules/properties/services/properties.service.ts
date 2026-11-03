@@ -1,5 +1,5 @@
 import { Injectable, ForbiddenException, NotFoundException } from '@nestjs/common';
-import { Prisma, Property, PropertyStatus } from '@prisma/client';
+import { Prisma, Property, PropertyCategory, PropertyStatus } from '@prisma/client';
 import { Service } from '@/common/domain/base.service';
 import { PrismaService } from '@/infra/database/prisma.service';
 import { CreatePropertyDto, AuthorizeAgentDto, RespondAuthorizationDto } from '../dto/property.dto';
@@ -304,7 +304,11 @@ export class PropertiesService extends Service {
       status: { not: PropertyStatus.DELISTED },
     };
 
-    if (dto.category) {
+    const categories = this.parseCategories(dto.categories);
+
+    if (categories.length > 0) {
+      where.category = { in: categories };
+    } else if (dto.category) {
       where.category = dto.category;
     }
 
@@ -362,6 +366,19 @@ export class PropertiesService extends Service {
       return true;
     }
     return metadata.type?.toLowerCase() === type.toLowerCase();
+  }
+
+  private parseCategories(value?: string): PropertyCategory[] {
+    if (!value) {
+      return [];
+    }
+
+    const validCategories = new Set<string>(Object.values(PropertyCategory));
+
+    return value
+      .split(',')
+      .map((entry) => entry.trim().toUpperCase())
+      .filter((entry): entry is PropertyCategory => validCategories.has(entry));
   }
 
   private matchesRating(metadata: SearchableMetadata, rating?: number): boolean {

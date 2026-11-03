@@ -21,6 +21,14 @@ export class SearchPropertiesDto {
   category?: PropertyCategory;
 
   @ApiPropertyOptional({
+    description: 'Comma-separated categories, takes precedence over category',
+    example: 'HOTEL,SHORTLET',
+  })
+  @IsOptional()
+  @IsString()
+  categories?: string;
+
+  @ApiPropertyOptional({
     description: 'Category of specific property type stored in metadata',
     example: 'hotel',
   })
