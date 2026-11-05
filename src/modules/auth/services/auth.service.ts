@@ -30,7 +30,8 @@ export type SanitizedUser = Omit<
 export type UserPrincipal = Pick<
   User,
   'id' | 'email' | 'firstName' | 'lastName' | 'role'
->;
+> &
+  Partial<Pick<User, 'phone' | 'avatarUrl' | 'createdAt'>>;
 
 export interface GoogleProfile {
   email: string;
@@ -123,6 +124,9 @@ export class AuthService extends Service {
         firstName: user.firstName,
         lastName: user.lastName,
         role: user.role,
+        phone: user.phone ?? null,
+        avatarUrl: user.avatarUrl ?? null,
+        createdAt: user.createdAt ?? new Date(),
       },
     };
   }
