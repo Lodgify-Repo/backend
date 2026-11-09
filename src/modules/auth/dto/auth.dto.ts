@@ -1,13 +1,4 @@
-import {
-  IsEmail,
-  IsString,
-  MinLength,
-  IsOptional,
-  IsPhoneNumber,
-  IsEnum,
-  Length,
-  Matches,
-} from 'class-validator';
+import {IsEmail,IsString,MinLength,IsOptional,IsPhoneNumber,IsEnum,Length,Matches,} from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Role } from '@prisma/client';
 

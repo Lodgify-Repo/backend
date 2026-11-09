@@ -1,11 +1,12 @@
-import { Injectable, ForbiddenException, NotFoundException } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { Prisma, Property, PropertyCategory, PropertyStatus } from '@prisma/client';
 import { Service } from '@/common/domain/base.service';
 import { PrismaService } from '@/infra/database/prisma.service';
-import { CreatePropertyDto, AuthorizeAgentDto, RespondAuthorizationDto } from '../dto/property.dto';
+import {CreatePropertyDto,UpdatePropertyDto,AuthorizeAgentDto,RespondAuthorizationDto,} from '../dto/property.dto';
 import { AssignPropertyStaffDto } from '../dto/assignment.dto';
 import { SearchPropertiesDto } from '../dto/search-properties.dto';
 import { DomainError } from '@/common/domain/error';
+import { PropertyErrorCodes } from '../errors';
 
 const SEARCH_SCAN_LIMIT = 200;
 const DEFAULT_RESULT_LIMIT = 24;
@@ -19,6 +20,23 @@ interface SearchableMetadata {
   bedrooms?: number;
   lat?: number;
   lng?: number;
+}
+
+export interface PropertyReview {
+  guestName: string;
+  guestLocation: string | null;
+  rating: number;
+  comment: string;
+}
+
+interface PropertyMetadata extends SearchableMetadata {
+  description?: string;
+  images?: string[];
+  amenities?: string[];
+  bathrooms?: number;
+  reviews?: PropertyReview[];
+  minNights?: number;
+  maxNights?: number;
 }
 
 export interface SearchResultItem {
@@ -35,6 +53,28 @@ export interface SearchResultItem {
   distanceKm: number | null;
 }
 
+export interface PropertyDetailItem {
+  id: string;
+  title: string;
+  category: PropertyCategory;
+  status: PropertyStatus;
+  price: number;
+  location: string | null;
+  imageUrl: string | null;
+  images: string[];
+  type: string | null;
+  rating: number | null;
+  bedrooms: number | null;
+  bathrooms: number | null;
+  distanceKm: number | null;
+  description: string | null;
+  amenities: string[];
+  reviews: PropertyReview[];
+  minNights: number;
+  maxNights: number | null;
+  currency: string;
+}
+
 @Injectable()
 export class PropertiesService extends Service {
   constructor(private readonly prisma: PrismaService) {
@@ -44,7 +84,10 @@ export class PropertiesService extends Service {
   async createProperty(ownerId: string, dto: CreatePropertyDto) {
     const ownerProfile = await this.prisma.ownerProfile.findUnique({ where: { userId: ownerId } });
     if (!ownerProfile) {
-      throw new DomainError('OWNER_PROFILE_REQUIRED', 'An active Owner profile is required to create a property.');
+      throw new DomainError(
+        PropertyErrorCodes.OWNER_PROFILE_REQUIRED,
+        'An active Owner profile is required to create a property.',
+      );
     }
 
     return this.prisma.property.create({
@@ -53,9 +96,77 @@ export class PropertiesService extends Service {
         title: dto.title,
         category: dto.category,
         price: dto.price,
-        metadata: dto.metadata ?? {},
+        metadata: this.buildPropertyMetadata(dto),
       },
     });
+  }
+
+  async updateProperty(
+    ownerId: string,
+    propertyId: string,
+    dto: UpdatePropertyDto,
+  ) {
+    const property = await this.prisma.property.findFirst({
+      where: { id: propertyId, ownerId },
+    });
+
+    if (!property) {
+      throw new DomainError(
+        PropertyErrorCodes.PROPERTY_NOT_FOUND,
+        'Property not found or you do not have permission to update it.',
+      );
+    }
+
+    return this.prisma.property.update({
+      where: { id: propertyId },
+      data: {
+        ...(dto.title !== undefined ? { title: dto.title } : {}),
+        ...(dto.category !== undefined ? { category: dto.category } : {}),
+        ...(dto.price !== undefined ? { price: dto.price } : {}),
+        metadata: this.mergePropertyMetadata(property.metadata, dto),
+      },
+    });
+  }
+
+  async getPropertyDetails(id: string): Promise<PropertyDetailItem> {
+    const property = await this.prisma.property.findUnique({ where: { id } });
+
+    if (!property || property.status === PropertyStatus.DELISTED) {
+      throw new DomainError(
+        PropertyErrorCodes.PROPERTY_NOT_FOUND,
+        'Property not found.',
+      );
+    }
+
+    const metadata = this.readPropertyMetadata(property.metadata);
+    const images =
+      metadata.images ??
+      (metadata.imageUrl !== undefined ? [metadata.imageUrl] : []);
+
+    return {
+      id: property.id,
+      title: property.title,
+      category: property.category,
+      status: property.status,
+      price: Number(property.price),
+      location: metadata.location ?? null,
+      imageUrl: images[0] ?? null,
+      images,
+      type: metadata.type ?? null,
+      rating: metadata.rating ?? null,
+      bedrooms: metadata.bedrooms ?? null,
+      bathrooms: metadata.bathrooms ?? null,
+      distanceKm: null,
+      description: metadata.description ?? null,
+      amenities: metadata.amenities ?? [],
+      reviews: metadata.reviews ?? [],
+      minNights: Math.max(1, Math.trunc(metadata.minNights ?? 1)),
+      maxNights:
+        metadata.maxNights !== undefined
+          ? Math.max(1, Math.trunc(metadata.maxNights))
+          : null,
+      currency: 'NGN',
+    };
   }
 
   async getOwnerPortfolio(ownerId: string) {
@@ -87,23 +198,37 @@ export class PropertiesService extends Service {
   async authorizeAgent(ownerId: string, propertyId: string, dto: AuthorizeAgentDto) {
     const property = await this.prisma.property.findFirst({ where: { id: propertyId, ownerId } });
     if (!property) {
-      throw new NotFoundException('Property not found or not owned by you.');
+      throw new DomainError(
+        PropertyErrorCodes.PROPERTY_NOT_FOUND,
+        'Property not found or not owned by you.',
+      );
     }
 
     let agentId = dto.agentId;
     if (!agentId && dto.agentEmail) {
       const agentUser = await this.prisma.user.findUnique({ where: { email: dto.agentEmail } });
-      if (!agentUser) throw new NotFoundException('Agent user not found with provided email.');
+      if (!agentUser) {
+        throw new DomainError(
+          PropertyErrorCodes.AGENT_NOT_FOUND,
+          'Agent user not found with provided email.',
+        );
+      }
       agentId = agentUser.id;
     }
 
     if (!agentId) {
-      throw new DomainError('VALIDATION_FAILED', 'Must provide either agentId or agentEmail');
+      throw new DomainError(
+        PropertyErrorCodes.VALIDATION_FAILED,
+        'Must provide either agentId or agentEmail',
+      );
     }
 
     const agentProfile = await this.prisma.agentProfile.findUnique({ where: { userId: agentId } });
     if (!agentProfile) {
-      throw new DomainError('AGENT_PROFILE_REQUIRED', 'The targeted user does not have an active Agent profile.');
+      throw new DomainError(
+        PropertyErrorCodes.AGENT_PROFILE_REQUIRED,
+        'The targeted user does not have an active Agent profile.',
+      );
     }
 
     return this.prisma.agentPropertyAuthorization.create({
@@ -135,11 +260,17 @@ export class PropertiesService extends Service {
     });
 
     if (!auth) {
-      throw new NotFoundException('Authorization request not found.');
+      throw new DomainError(
+        PropertyErrorCodes.AUTHORIZATION_NOT_FOUND,
+        'Authorization request not found.',
+      );
     }
 
     if (auth.status !== 'PENDING') {
-      throw new DomainError('INVALID_STATE', 'Authorization is not pending.');
+      throw new DomainError(
+        PropertyErrorCodes.INVALID_AUTHORIZATION_STATE,
+        'Authorization is not pending.',
+      );
     }
 
     const newStatus = dto.accept ? 'ACTIVE' : 'REJECTED';
@@ -156,7 +287,10 @@ export class PropertiesService extends Service {
     });
 
     if (!auth) {
-      throw new NotFoundException('Authorization request not found or not yours.');
+      throw new DomainError(
+        PropertyErrorCodes.AUTHORIZATION_NOT_FOUND,
+        'Authorization request not found or not yours.',
+      );
     }
 
     return this.prisma.agentPropertyAuthorization.update({
@@ -170,19 +304,28 @@ export class PropertiesService extends Service {
       where: { id: propertyId, ownerId },
     });
     if (!property) {
-      throw new NotFoundException('Property not found or not owned by you.');
+      throw new DomainError(
+        PropertyErrorCodes.PROPERTY_NOT_FOUND,
+        'Property not found or not owned by you.',
+      );
     }
 
     let targetUserId = dto.userId;
     if (!targetUserId && dto.email) {
       const user = await this.prisma.user.findUnique({ where: { email: dto.email } });
       if (!user) {
-        throw new NotFoundException('Assignee user not found with provided email.');
+        throw new DomainError(
+          PropertyErrorCodes.ASSIGNEE_NOT_FOUND,
+          'Assignee user not found with provided email.',
+        );
       }
       targetUserId = user.id;
     }
     if (!targetUserId) {
-      throw new DomainError('VALIDATION_FAILED', 'Must provide either userId or email');
+      throw new DomainError(
+        PropertyErrorCodes.VALIDATION_FAILED,
+        'Must provide either userId or email',
+      );
     }
 
     const targetUser = await this.prisma.user.findUnique({
@@ -190,12 +333,15 @@ export class PropertiesService extends Service {
       include: { agentProfile: true },
     });
     if (!targetUser) {
-      throw new NotFoundException('Target user not found.');
+      throw new DomainError(
+        PropertyErrorCodes.ASSIGNEE_NOT_FOUND,
+        'Target user not found.',
+      );
     }
 
     if (targetUser.parentId !== ownerId && !targetUser.agentProfile) {
       throw new DomainError(
-        'INVALID_ASSIGNEE',
+        PropertyErrorCodes.INVALID_ASSIGNEE,
         'Assignee must be either your sub-account staff or an authorized agent',
       );
     }
@@ -237,14 +383,20 @@ export class PropertiesService extends Service {
       where: { id: propertyId, ownerId },
     });
     if (!property) {
-      throw new NotFoundException('Property not found or not owned by you.');
+      throw new DomainError(
+        PropertyErrorCodes.PROPERTY_NOT_FOUND,
+        'Property not found or not owned by you.',
+      );
     }
 
     const assignment = await this.prisma.propertyAssignment.findFirst({
       where: { id: assignmentId, propertyId },
     });
     if (!assignment) {
-      throw new NotFoundException('Assignment not found on this property.');
+      throw new DomainError(
+        PropertyErrorCodes.ASSIGNMENT_NOT_FOUND,
+        'Assignment not found on this property.',
+      );
     }
 
     await this.prisma.propertyAssignment.delete({ where: { id: assignmentId } });
@@ -256,7 +408,10 @@ export class PropertiesService extends Service {
       where: { id: propertyId, ownerId },
     });
     if (!property) {
-      throw new NotFoundException('Property not found or not owned by you.');
+      throw new DomainError(
+        PropertyErrorCodes.PROPERTY_NOT_FOUND,
+        'Property not found or not owned by you.',
+      );
     }
 
     return this.prisma.propertyAssignment.findMany({
@@ -328,7 +483,7 @@ export class PropertiesService extends Service {
     const matched = properties
       .map((property) => ({
         property,
-        metadata: this.readSearchMetadata(property.metadata),
+        metadata: this.readPropertyMetadata(property.metadata),
       }))
       .filter(({ property, metadata }) => this.matchesQuery(property, metadata, dto.q))
       .filter(({ metadata }) => this.matchesType(metadata, dto.type))
@@ -456,7 +611,36 @@ export class PropertiesService extends Service {
     return (value * Math.PI) / 180;
   }
 
-  private readSearchMetadata(value: Prisma.JsonValue | null): SearchableMetadata {
+  private buildPropertyMetadata(dto: CreatePropertyDto): Prisma.InputJsonObject {
+    return {
+      ...(dto.metadata ?? {}),
+      ...(dto.description !== undefined ? { description: dto.description } : {}),
+      ...(dto.images !== undefined ? { images: dto.images } : {}),
+      ...(dto.amenities !== undefined ? { amenities: dto.amenities } : {}),
+    };
+  }
+
+  private mergePropertyMetadata(
+    existing: Prisma.JsonValue | null,
+    dto: UpdatePropertyDto,
+  ): Prisma.InputJsonObject {
+    const base: Prisma.InputJsonObject =
+      typeof existing === 'object' &&
+      existing !== null &&
+      !Array.isArray(existing)
+        ? (existing as Prisma.InputJsonObject)
+        : {};
+
+    return {
+      ...base,
+      ...(dto.metadata ?? {}),
+      ...(dto.description !== undefined ? { description: dto.description } : {}),
+      ...(dto.images !== undefined ? { images: dto.images } : {}),
+      ...(dto.amenities !== undefined ? { amenities: dto.amenities } : {}),
+    };
+  }
+
+  private readPropertyMetadata(value: Prisma.JsonValue | null): PropertyMetadata {
     if (typeof value !== 'object' || value === null || Array.isArray(value)) {
       return {};
     }
@@ -471,11 +655,72 @@ export class PropertiesService extends Service {
       bedrooms: this.readNumber(record['bedrooms']),
       lat: this.readNumber(record['lat']),
       lng: this.readNumber(record['lng']),
+      description: this.readString(record['description']),
+      images: this.readStringArray(record['images']),
+      amenities: this.readStringArray(record['amenities']),
+      bathrooms: this.readNumber(record['bathrooms']),
+      reviews: this.readReviews(record['reviews']),
+      minNights: this.readNumber(record['minNights']),
+      maxNights: this.readNumber(record['maxNights']),
     };
   }
 
   private readString(value: unknown): string | undefined {
     return typeof value === 'string' && value.trim() !== '' ? value : undefined;
+  }
+
+  private readStringArray(value: unknown): string[] | undefined {
+    if (!Array.isArray(value)) {
+      return undefined;
+    }
+
+    const items = value
+      .filter(
+        (entry): entry is string =>
+          typeof entry === 'string' && entry.trim() !== '',
+      )
+      .map((entry) => entry.trim());
+
+    return items.length > 0 ? items : undefined;
+  }
+
+  private readReviews(value: unknown): PropertyReview[] | undefined {
+    if (!Array.isArray(value)) {
+      return undefined;
+    }
+
+    const reviews = value
+      .map((entry): PropertyReview | null => {
+        if (
+          typeof entry !== 'object' ||
+          entry === null ||
+          Array.isArray(entry)
+        ) {
+          return null;
+        }
+
+        const record = entry as Record<string, unknown>;
+        const guestName = this.readString(record['guestName']);
+        const comment = this.readString(record['comment']);
+        const rating = this.readNumber(record['rating']);
+
+        if (!guestName || !comment || rating === undefined) {
+          return null;
+        }
+
+        return {
+          guestName,
+          guestLocation:
+            this.readString(record['guestLocation']) ??
+            this.readString(record['location']) ??
+            null,
+          rating,
+          comment,
+        };
+      })
+      .filter((review): review is PropertyReview => review !== null);
+
+    return reviews.length > 0 ? reviews : undefined;
   }
 
   private readNumber(value: unknown): number | undefined {

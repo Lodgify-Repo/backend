@@ -1,7 +1,6 @@
-import { IsEnum, IsNumber, IsOptional, IsString, IsArray, IsEmail, Min, ValidateNested } from 'class-validator';
-import { Type } from 'class-transformer';
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { PropertyCategory, CommissionType, AuthorizationStatus } from '@prisma/client';
+import { IsEnum, IsNumber, IsOptional, IsString, IsArray, IsEmail, IsObject, Min } from 'class-validator';
+import { ApiProperty, ApiPropertyOptional, PartialType } from '@nestjs/swagger';
+import { Prisma, PropertyCategory, CommissionType, AuthorizationStatus } from '@prisma/client';
 
 export class CreatePropertyDto {
   @ApiProperty({ description: 'Title of the property' })
@@ -17,10 +16,30 @@ export class CreatePropertyDto {
   @Min(0)
   price: number;
 
+  @ApiPropertyOptional({ description: 'Long-form property description shown on the details page' })
+  @IsOptional()
+  @IsString()
+  description?: string;
+
+  @ApiPropertyOptional({ description: 'Gallery image URLs for the details page', type: [String] })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  images?: string[];
+
+  @ApiPropertyOptional({ description: 'Amenity labels shown as facilities on the details page', type: [String] })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  amenities?: string[];
+
   @ApiPropertyOptional({ description: 'Category-specific metadata' })
   @IsOptional()
-  metadata?: any;
+  @IsObject()
+  metadata?: Prisma.InputJsonObject;
 }
+
+export class UpdatePropertyDto extends PartialType(CreatePropertyDto) {}
 
 export class AuthorizeAgentDto {
   @ApiPropertyOptional({ description: 'Agent Email (required if agentId is not provided)' })

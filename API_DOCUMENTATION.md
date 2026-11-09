@@ -115,13 +115,24 @@
 **Returns:** The system returns a success confirmation.
 
 ## 3. Properties (`/properties`)
-*Note: All endpoints in this section require a valid `access_token`.*
+*Note: The property search and property details endpoints are public. All other endpoints in this section require a valid `access_token`.*
 
 ### POST `/properties`
 **Description:** The system creates a new property. This property can be a hotel, a shortlet, a rental, or a sale property.
 **Requirement:** The user must have the `OWNER` capability.
-**Payload:** Send a `CreatePropertyDto` JSON object in the request body.
+**Payload:** Send a `CreatePropertyDto` JSON object in the request body. Alongside `title`, `category`, and `price`, you can send `description`, `images` (gallery URLs), `amenities` (facility labels), and category-specific `metadata` such as `location`, `type`, `rating`, `bedrooms`, `bathrooms`, `lat`, `lng`, `reviews`, `minNights`, and `maxNights`.
 **Returns:** The system returns the new property object.
+
+### GET `/properties/:id`
+**Description:** The system gets the public details for one property. This endpoint powers the property details page.
+**Payload:** The request body is empty.
+**Returns:** The property details including `description`, `images`, `imageUrl`, `amenities`, `bathrooms`, `reviews`, `minNights`, `maxNights`, and `currency`.
+
+### PATCH `/properties/:id`
+**Description:** The system updates a property and its details-page content. Any fields omitted from the request are left unchanged, and details fields are merged into the existing metadata.
+**Requirement:** The user must be the owner of the property.
+**Payload:** Send a `UpdatePropertyDto` JSON object with any of `title`, `category`, `price`, `description`, `images`, `amenities`, or `metadata`.
+**Returns:** The updated property object.
 
 ### GET `/properties/portfolio`
 **Description:** The system gets the combined property portfolio for the owner.
@@ -176,7 +187,32 @@
 **Payload:** Send a `RespondAuthorizationDto` JSON object in the request body.
 **Returns:** The system returns the updated authorization data.
 
-## 4. Admin (`/admin`)
+## 4. Bookings (`/bookings`)
+*Note: All endpoints in this section require a valid `access_token`.*
+
+### POST `/properties/:propertyId/bookings`
+**Description:** The system creates a booking for a property. The total is calculated from the property price and the number of nights for hotels and shortlets.
+**Payload:** Send a `CreateBookingDto` JSON object with `checkInDate` (ISO date), `nights`, and optional `guests`.
+**Returns:** The created booking with the property summary and `PENDING` status. Overlapping active bookings are rejected with `409 Conflict`.
+
+### GET `/bookings/me`
+**Description:** The system lists all bookings made by the current user.
+**Payload:** The request body is empty.
+**Returns:** An array of bookings ordered by newest first.
+
+### GET `/bookings/:id`
+**Description:** The system gets one booking by id.
+**Requirement:** The user must be the guest on the booking or the owner of the property.
+**Payload:** The request body is empty.
+**Returns:** The booking with its property summary.
+
+### PATCH `/bookings/:id/cancel`
+**Description:** The system cancels a pending or confirmed booking.
+**Requirement:** The user must be the guest on the booking or the owner of the property.
+**Payload:** The request body is empty.
+**Returns:** The cancelled booking.
+
+## 5. Admin (`/admin`)
 *Note: All endpoints in this section require a valid `access_token`. The user must also have an `ADMIN` or `SUPER_ADMIN` role.*
 
 ### GET `/admin/users`
@@ -214,7 +250,7 @@
 **Payload:** Send a `ClearLogsDto` JSON object in the request body.
 **Returns:** The system returns a success confirmation.
 
-## 5. Application (`/`)
+## 6. Application (`/`)
 
 ### GET `/`
 **Description:** The system checks if the application runs correctly.

@@ -11,6 +11,7 @@ import { AuthModule } from './modules/auth/auth.module';
 import { UsersModule } from './modules/users/users.module';
 import { AdminModule } from './modules/admin/admin.module';
 import { PropertiesModule } from './modules/properties/properties.module';
+import { BookingsModule } from './modules/bookings/bookings.module';
 import { envValidationSchema } from './common/config/env.validation';
 import { TenantContextMiddleware } from './common/middleware/tenant-context.middleware';
 
@@ -27,6 +28,7 @@ import { TenantContextMiddleware } from './common/middleware/tenant-context.midd
     UsersModule,
     AdminModule,
     PropertiesModule,
+    BookingsModule,
   ],
   controllers: [AppController],
   providers: [AppService, AuthEventListeners, UserEventListeners],

@@ -1,0 +1,29 @@
+import { DomainErrorCode } from '@/common/domain/error';
+import { HttpStatus } from '@nestjs/common';
+
+export const BookingErrorCodes = {
+  ...DomainErrorCode,
+  BOOKING_PROPERTY_NOT_FOUND: 'BOOKING_PROPERTY_NOT_FOUND',
+  PROPERTY_NOT_AVAILABLE: 'PROPERTY_NOT_AVAILABLE',
+  INVALID_CHECK_IN_DATE: 'INVALID_CHECK_IN_DATE',
+  CHECK_IN_IN_PAST: 'CHECK_IN_IN_PAST',
+  MINIMUM_STAY_NOT_MET: 'MINIMUM_STAY_NOT_MET',
+  MAXIMUM_STAY_EXCEEDED: 'MAXIMUM_STAY_EXCEEDED',
+  BOOKING_CONFLICT: 'BOOKING_CONFLICT',
+  BOOKING_NOT_FOUND: 'BOOKING_NOT_FOUND',
+  BOOKING_ACCESS_DENIED: 'BOOKING_ACCESS_DENIED',
+  BOOKING_NOT_CANCELLABLE: 'BOOKING_NOT_CANCELLABLE',
+} as const;
+
+export const BookingErrorMap: Record<string, HttpStatus> = {
+  [BookingErrorCodes.BOOKING_PROPERTY_NOT_FOUND]: HttpStatus.NOT_FOUND,
+  [BookingErrorCodes.PROPERTY_NOT_AVAILABLE]: HttpStatus.BAD_REQUEST,
+  [BookingErrorCodes.INVALID_CHECK_IN_DATE]: HttpStatus.BAD_REQUEST,
+  [BookingErrorCodes.CHECK_IN_IN_PAST]: HttpStatus.BAD_REQUEST,
+  [BookingErrorCodes.MINIMUM_STAY_NOT_MET]: HttpStatus.BAD_REQUEST,
+  [BookingErrorCodes.MAXIMUM_STAY_EXCEEDED]: HttpStatus.BAD_REQUEST,
+  [BookingErrorCodes.BOOKING_CONFLICT]: HttpStatus.CONFLICT,
+  [BookingErrorCodes.BOOKING_NOT_FOUND]: HttpStatus.NOT_FOUND,
+  [BookingErrorCodes.BOOKING_ACCESS_DENIED]: HttpStatus.FORBIDDEN,
+  [BookingErrorCodes.BOOKING_NOT_CANCELLABLE]: HttpStatus.BAD_REQUEST,
+};

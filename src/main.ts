@@ -7,6 +7,8 @@ import { DomainErrorFilter, registerErrorMap } from './common/filters/domain-err
 import { AuthErrorMap } from './modules/auth/errors';
 import { UserErrorMap } from './modules/users/errors';
 import { AdminErrorMap } from './modules/admin/errors';
+import { PropertyErrorMap } from './modules/properties/errors';
+import { BookingErrorMap } from './modules/bookings/errors';
 import { PrismaClientExceptionFilter } from './common/filters/prisma-client-exception.filter';
 
 async function bootstrap() {
@@ -21,6 +23,8 @@ async function bootstrap() {
   registerErrorMap(AuthErrorMap);
   registerErrorMap(UserErrorMap);
   registerErrorMap(AdminErrorMap);
+  registerErrorMap(PropertyErrorMap);
+  registerErrorMap(BookingErrorMap);
 
   app.useGlobalFilters(
     new DomainErrorFilter(),

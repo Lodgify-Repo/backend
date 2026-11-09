@@ -38,6 +38,7 @@ model User {
   receivedAuths     AgentPropertyAuthorization[] @relation("AgentAuths")
   grantedAuths      AgentPropertyAuthorization[] @relation("OwnerAuths")
   propertyAssignments PropertyAssignment[]
+  bookings          Booking[]              @relation("GuestBookings")
 }
 
 
@@ -204,6 +205,7 @@ model Property {
 
   authorizations AgentPropertyAuthorization[]
   assignments    PropertyAssignment[]
+  bookings       Booking[]
   
   @@index([ownerId])
   @@index([category])
@@ -252,5 +254,33 @@ model PropertyAssignment {
   @@unique([propertyId, userId, role])
   @@index([propertyId])
   @@index([userId])
+}
+
+enum BookingStatus {
+  PENDING
+  CONFIRMED
+  CANCELLED
+  COMPLETED
+}
+
+model Booking {
+  id           String        @id @default(uuid())
+  propertyId   String
+  property     Property      @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  guestId      String
+  guest        User          @relation("GuestBookings", fields: [guestId], references: [id], onDelete: Cascade)
+  checkInDate  DateTime
+  checkOutDate DateTime
+  nights       Int
+  guests       Int           @default(1)
+  totalAmount  Decimal
+  status       BookingStatus @default(PENDING)
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  @@index([propertyId])
+  @@index([guestId])
+  @@index([status])
+  @@index([checkInDate, checkOutDate])
 }
 

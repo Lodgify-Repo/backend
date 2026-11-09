@@ -3,16 +3,8 @@ import { JwtService } from '@nestjs/jwt';
 import { Service } from '@/common/domain/base.service';
 import { PrismaService } from '@/infra/database/prisma.service';
 import { EventBusService } from '@/infra/eventbus';
-import {
-  AUTH_OTP_REQUESTED,
-  type PasswordResetOtpRequested,
-} from '@/common/events/auth.events';
-import {
-  RegisterDto,
-  ResetPasswordDto,
-  NewPasswordDto,
-  VerifyOtpDto,
-} from '../dto/auth.dto';
+import {AUTH_OTP_REQUESTED,type PasswordResetOtpRequested,} from '@/common/events/auth.events';
+import {RegisterDto,ResetPasswordDto,NewPasswordDto,VerifyOtpDto,} from '../dto/auth.dto';
 import * as bcrypt from 'bcrypt';
 import * as crypto from 'crypto';
 import { DomainError } from '@/common/domain/error';

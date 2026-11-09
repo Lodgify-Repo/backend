@@ -1,7 +1,7 @@
 import { Controller, Post, Get, Body, UseGuards, Request, Param, Patch, Delete } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { PropertiesService } from '../services/properties.service';
-import { CreatePropertyDto, AuthorizeAgentDto, RespondAuthorizationDto } from '../dto/property.dto';
+import {CreatePropertyDto,UpdatePropertyDto,AuthorizeAgentDto,RespondAuthorizationDto,} from '../dto/property.dto';
 import { AssignPropertyStaffDto } from '../dto/assignment.dto';
 import { JwtAuthGuard } from '@/common/guards/jwt-auth.guard';
 import { CapabilityGuard } from '@/common/guards/capability.guard';
@@ -100,5 +100,16 @@ export class PropertiesController {
     @Body() dto: RespondAuthorizationDto,
   ) {
     return this.propertiesService.respondToAuthorization(req.user.id, authId, dto);
+  }
+
+  @Patch(':id')
+  @RequireCapability('OWNER')
+  @ApiOperation({ summary: 'Update a property and its details-page content' })
+  async updateProperty(
+    @Request() req: any,
+    @Param('id') propertyId: string,
+    @Body() dto: UpdatePropertyDto,
+  ) {
+    return this.propertiesService.updateProperty(req.user.id, propertyId, dto);
   }
 }
