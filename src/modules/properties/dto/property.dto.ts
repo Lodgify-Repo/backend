@@ -1,4 +1,4 @@
-import { IsEnum, IsNumber, IsOptional, IsString, IsArray, IsEmail, IsObject, Min } from 'class-validator';
+import { IsEnum, IsNumber, IsOptional, IsString, IsArray, IsEmail, IsObject, IsBoolean, Min } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional, PartialType } from '@nestjs/swagger';
 import { Prisma, PropertyCategory, CommissionType, AuthorizationStatus } from '@prisma/client';
 
@@ -70,5 +70,6 @@ export class AuthorizeAgentDto {
 
 export class RespondAuthorizationDto {
   @ApiProperty({ description: 'Accept or reject the authorization' })
+  @IsBoolean()
   accept: boolean;
 }

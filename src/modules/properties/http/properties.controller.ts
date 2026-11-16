@@ -34,6 +34,24 @@ export class PropertiesController {
     return this.propertiesService.getStaffAssignments(req.user.id);
   }
 
+  @Get('agent/assignments')
+  @RequireCapability('AGENT')
+  @ApiOperation({ summary: 'Get properties assigned to this agent' })
+  async getAgentAssignments(@Request() req: any) {
+    return this.propertiesService.getAgentAssignments(req.user.id);
+  }
+
+  @Patch('agent/authorizations/:authId/respond')
+  @RequireCapability('AGENT')
+  @ApiOperation({ summary: 'Accept or reject a request for authorization' })
+  async respondToAuthorization(
+    @Request() req: any,
+    @Param('authId') authId: string,
+    @Body() dto: RespondAuthorizationDto,
+  ) {
+    return this.propertiesService.respondToAuthorization(req.user.id, authId, dto);
+  }
+
   @Post(':id/assignments')
   @RequireCapability('OWNER')
   @ApiOperation({ summary: 'Assign a branch manager or agent to a property' })
@@ -82,24 +100,6 @@ export class PropertiesController {
   @ApiOperation({ summary: 'Revoke an agent authorization' })
   async revokeAuthorization(@Request() req: any, @Param('authId') authId: string) {
     return this.propertiesService.revokeAuthorization(req.user.id, authId);
-  }
-
-  @Get('agent/assignments')
-  @RequireCapability('AGENT')
-  @ApiOperation({ summary: 'Get properties assigned to this agent' })
-  async getAgentAssignments(@Request() req: any) {
-    return this.propertiesService.getAgentAssignments(req.user.id);
-  }
-
-  @Patch('agent/authorizations/:authId/respond')
-  @RequireCapability('AGENT')
-  @ApiOperation({ summary: 'Accept or reject an authorization request' })
-  async respondToAuthorization(
-    @Request() req: any,
-    @Param('authId') authId: string,
-    @Body() dto: RespondAuthorizationDto,
-  ) {
-    return this.propertiesService.respondToAuthorization(req.user.id, authId, dto);
   }
 
   @Patch(':id')
