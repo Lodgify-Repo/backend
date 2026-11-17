@@ -86,9 +86,9 @@
 **Returns:** The system returns a success confirmation.
 
 ### POST `/users/sub-accounts/invite`
-**Description:** The system sends an invitation to a sub-account. A sub-account is a manager or an agent.
+**Description:** The system sends an invitation to a sub-account. A sub-account can be a manager, a staff member, and can also receive agent access.
 **Requirement:** The user must have the `OWNER` capability.
-**Payload:** Send an `InviteSubAccountDto` JSON object in the request body.
+**Payload:** Send an `InviteSubAccountDto` JSON object in the request body with `email`, `role` (`MANAGER` or `USER`), and optional `isAgent` to activate the agent persona when the invitation is accepted.
 **Returns:** The system returns the invitation data.
 
 ### GET `/users/sub-accounts`

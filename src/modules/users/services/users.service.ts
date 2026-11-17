@@ -190,7 +190,7 @@ export class UsersService extends Service {
   }
 
   async inviteSubAccount(parentId: string, dto: InviteSubAccountDto) {
-    if (dto.role === Role.ADMIN || dto.role === Role.SUPER_ADMIN) {
+    if (dto.role !== Role.MANAGER && dto.role !== Role.USER) {
       throw new DomainError(
         UserErrorCodes.INVALID_PROFILE_DATA,
         'Owners cannot invite administrator sub-accounts',
@@ -215,6 +215,7 @@ export class UsersService extends Service {
         senderId: parentId,
         email: dto.email,
         role: dto.role,
+        isAgent: dto.isAgent ?? false,
         token,
         expiresAt,
       },
@@ -232,12 +233,13 @@ export class UsersService extends Service {
       event: USER_INVITATION_SENT,
       email: dto.email,
       role: dto.role,
+      isAgent: dto.isAgent ?? false,
       link,
       inviterName: formatInviterName(inviter),
       expiresInDays: INVITATION_TTL_DAYS,
     } satisfies SubAccountInvited);
 
-    return invitation;
+    return { ...invitation, link };
   }
 
   async acceptInvitation(userId: string, dto: AcceptSubAccountDto) {
@@ -268,6 +270,7 @@ export class UsersService extends Service {
 
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
+      include: { agentProfile: true },
     });
 
     if (!user || user.email !== invitation.email) {
@@ -277,19 +280,41 @@ export class UsersService extends Service {
       );
     }
 
-    // wilson I'm sorry, but this is the best I could come up with, I dont wanna use a seperate transaction manager,
-    //its best we leverage prisma's transaction manager, it's more efficient and less prone to errors.
     return this.prisma.$transaction(async (tx) => {
       await tx.subAccountInvitation.update({
         where: { id: invitation.id },
         data: { status: 'ACCEPTED' },
       });
 
+      if (invitation.isAgent && !user.agentProfile) {
+        await tx.agentProfile.create({
+          data: { userId },
+        });
+      }
+
       return tx.user.update({
         where: { id: userId },
         data: {
           parentId: invitation.senderId,
           role: invitation.role,
+        },
+        select: {
+          id: true,
+          email: true,
+          firstName: true,
+          lastName: true,
+          role: true,
+          parentId: true,
+          isActive: true,
+          createdAt: true,
+          agentProfile: {
+            select: {
+              id: true,
+              agencyType: true,
+              organizationName: true,
+              isVerified: true,
+            },
+          },
         },
       });
     });
@@ -305,6 +330,15 @@ export class UsersService extends Service {
         lastName: true,
         role: true,
         isActive: true,
+        createdAt: true,
+        agentProfile: {
+          select: {
+            id: true,
+            agencyType: true,
+            organizationName: true,
+            isVerified: true,
+          },
+        },
         propertyAssignments: {
           include: {
             property: {
@@ -330,13 +364,33 @@ export class UsersService extends Service {
     return this.prisma.user.update({
       where: { id: subAccountId, parentId },
       data: { isActive },
+      select: {
+        id: true,
+        email: true,
+        firstName: true,
+        lastName: true,
+        role: true,
+        parentId: true,
+        isActive: true,
+        createdAt: true,
+        agentProfile: {
+          select: {
+            id: true,
+            agencyType: true,
+            organizationName: true,
+            isVerified: true,
+          },
+        },
+      },
     });
   }
 
   async removeSubAccount(parentId: string, subAccountId: string) {
-    return this.prisma.user.update({
+    await this.prisma.user.update({
       where: { id: subAccountId, parentId },
       data: { parentId: null },
     });
+
+    return { success: true };
   }
 }

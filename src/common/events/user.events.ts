@@ -10,6 +10,7 @@ export type SubAccountInvited = {
   readonly event: typeof USER_INVITATION_SENT;
   readonly email: string;
   readonly role: string;
+  readonly isAgent: boolean;
   readonly link: string;
   readonly inviterName: string;
   readonly expiresInDays: number;
@@ -28,6 +29,7 @@ export function isSubAccountInvited(
     candidate.event === USER_INVITATION_SENT &&
     typeof candidate.email === 'string' &&
     typeof candidate.role === 'string' &&
+    typeof candidate.isAgent === 'boolean' &&
     typeof candidate.link === 'string' &&
     typeof candidate.inviterName === 'string' &&
     typeof candidate.expiresInDays === 'number'
@@ -48,11 +50,12 @@ export class UserEventListeners
       return;
     }
 
-    const { email, role, link, inviterName, expiresInDays } = payload;
+    const { email, role, isAgent, link, inviterName, expiresInDays } = payload;
 
     try {
       await this.mail.sendInvitation(email, {
         role,
+        isAgent,
         link,
         inviterName,
         expiresInDays,

@@ -17,7 +17,13 @@ describe('UsersService', () => {
     },
     subAccountInvitation: {
       create: jest.fn(),
+      findUnique: jest.fn(),
+      update: jest.fn(),
     },
+    agentProfile: {
+      create: jest.fn(),
+    },
+    $transaction: jest.fn(),
   };
 
   const mockEvents = {
@@ -109,12 +115,20 @@ describe('UsersService', () => {
       });
 
       expect(result.id).toBe('inv-1');
-      expect(mockPrisma.subAccountInvitation.create).toHaveBeenCalled();
+      expect(result.link).toContain('http://localhost:4200/register?token=');
+      expect(mockPrisma.subAccountInvitation.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          email: 'staff@test.com',
+          role: Role.MANAGER,
+          isAgent: false,
+        }),
+      });
       expect(mockEvents.emit).toHaveBeenCalledWith(
         'user:sub-account-invited',
         expect.objectContaining({
           email: 'staff@test.com',
           role: Role.MANAGER,
+          isAgent: false,
           inviterName: 'Ada Boss',
           expiresInDays: 7,
           link: expect.stringContaining(
@@ -158,6 +172,54 @@ describe('UsersService', () => {
     });
   });
 
+  describe('acceptInvitation', () => {
+    it('should activate agent access and return a safe profile', async () => {
+      const invitation = {
+        id: 'inv-1',
+        senderId: 'parent-1',
+        email: 'staff@test.com',
+        role: Role.MANAGER,
+        isAgent: true,
+        status: 'PENDING',
+        token: 'token-1',
+        expiresAt: new Date(Date.now() + 60_000),
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      };
+      const accepted = {
+        id: '2',
+        email: 'staff@test.com',
+        firstName: 'Sam',
+        lastName: 'Staff',
+        role: Role.MANAGER,
+        parentId: 'parent-1',
+        isActive: true,
+        createdAt: new Date(),
+        agentProfile: { id: 'agent-profile-1' },
+      };
+
+      mockPrisma.subAccountInvitation.findUnique.mockResolvedValue(invitation);
+      mockPrisma.user.findUnique.mockResolvedValue({
+        id: '2',
+        email: 'staff@test.com',
+        agentProfile: null,
+      });
+      mockPrisma.subAccountInvitation.update.mockResolvedValue(invitation);
+      mockPrisma.agentProfile.create.mockResolvedValue({ id: 'agent-profile-1' });
+      mockPrisma.user.update.mockResolvedValue(accepted);
+      mockPrisma.$transaction.mockImplementation(
+        async (callback: (tx: typeof mockPrisma) => Promise<unknown>) => callback(mockPrisma),
+      );
+
+      const result = await service.acceptInvitation('2', { token: 'token-1' });
+
+      expect(mockPrisma.agentProfile.create).toHaveBeenCalledWith({
+        data: { userId: '2' },
+      });
+      expect(result).toEqual(accepted);
+    });
+  });
+
   describe('getSubAccounts', () => {
     it('should return a list of sub-accounts', async () => {
       const subAccounts = [{ id: '2', email: 'sub@test.com' }];
@@ -173,10 +235,12 @@ describe('UsersService', () => {
       mockPrisma.user.update.mockResolvedValue({ id: '2', isActive: false });
 
       await service.setSubAccountStatus('parent-1', '2', false);
-      expect(mockPrisma.user.update).toHaveBeenCalledWith({
-        where: { id: '2', parentId: 'parent-1' },
-        data: { isActive: false },
-      });
+      expect(mockPrisma.user.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: '2', parentId: 'parent-1' },
+          data: { isActive: false },
+        }),
+      );
     });
   });
 
@@ -184,7 +248,9 @@ describe('UsersService', () => {
     it('should remove parentId from sub-account', async () => {
       mockPrisma.user.update.mockResolvedValue({ id: '2', parentId: null });
 
-      await service.removeSubAccount('parent-1', '2');
+      const result = await service.removeSubAccount('parent-1', '2');
+
+      expect(result).toEqual({ success: true });
       expect(mockPrisma.user.update).toHaveBeenCalledWith({
         where: { id: '2', parentId: 'parent-1' },
         data: { parentId: null },

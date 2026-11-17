@@ -62,6 +62,7 @@ describe('UserEventListeners', () => {
       event: USER_INVITATION_SENT,
       email: 'staff@test.com',
       role: 'MANAGER',
+      isAgent: false,
       link: 'http://localhost:4200/register?token=abc',
       inviterName: 'Ada Boss',
       expiresInDays: 7,
@@ -69,6 +70,7 @@ describe('UserEventListeners', () => {
 
     expect(mockMail.sendInvitation).toHaveBeenCalledWith('staff@test.com', {
       role: 'MANAGER',
+      isAgent: false,
       link: 'http://localhost:4200/register?token=abc',
       inviterName: 'Ada Boss',
       expiresInDays: 7,
@@ -102,6 +104,7 @@ describe('UserEventListeners', () => {
       event: USER_INVITATION_SENT,
       email: 'staff@test.com',
       role: 'MANAGER',
+      isAgent: false,
       link: 'http://localhost:4200/register?token=abc',
       inviterName: 'Ada Boss',
       expiresInDays: 7,

@@ -41,6 +41,7 @@ function toRoleLabel(role: string): string {
 
 export type InvitationMail = {
   readonly role: string;
+  readonly isAgent: boolean;
   readonly link: string;
   readonly inviterName: string;
   readonly expiresInDays: number;
@@ -65,7 +66,9 @@ export class MailService {
   }
 
   async sendInvitation(to: string, invitation: InvitationMail): Promise<void> {
-    const roleLabel = toRoleLabel(invitation.role);
+    const roleLabel = `${toRoleLabel(invitation.role)}${
+      invitation.isAgent ? ' with agent access' : ''
+    }`;
 
     await this.deliver(
       to,

@@ -101,6 +101,7 @@ model SubAccountInvitation {
   sender    User     @relation("SentInvitations", fields: [senderId], references: [id])
   email     String
   role      Role
+  isAgent   Boolean  @default(false)
   status    String   @default("PENDING") // PENDING, ACCEPTED, CANCELLED
   token     String   @unique
   expiresAt DateTime

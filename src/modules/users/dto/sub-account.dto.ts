@@ -1,4 +1,4 @@
-import { IsEmail, IsEnum, IsOptional, IsArray, IsString, IsNotEmpty } from 'class-validator';
+import { IsEmail, IsEnum, IsOptional, IsArray, IsString, IsNotEmpty, IsBoolean } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Role } from '@prisma/client';
 
@@ -8,13 +8,21 @@ export class InviteSubAccountDto {
   email: string;
 
   @ApiProperty({
-    description: 'Sub-account role (e.g., MANAGER or USER)',
+    description: 'Organization role for the sub-account',
     enum: [Role.MANAGER, Role.USER],
     default: Role.MANAGER,
     example: Role.MANAGER,
   })
   @IsEnum(Role)
   role: Role;
+
+  @ApiPropertyOptional({
+    description: 'Whether this sub-account should also have agent access',
+    default: false,
+  })
+  @IsOptional()
+  @IsBoolean()
+  isAgent?: boolean;
 
   @ApiPropertyOptional({
     description: 'Optional property IDs to assign to this sub-account',

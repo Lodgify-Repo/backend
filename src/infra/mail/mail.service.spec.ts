@@ -102,6 +102,7 @@ describe('MailService', () => {
 
       await service.sendInvitation('staff@test.com', {
         role: Role.MANAGER,
+        isAgent: false,
         link: 'http://localhost:4200/register?token=abc',
         inviterName: 'Ada Boss',
         expiresInDays: 7,
