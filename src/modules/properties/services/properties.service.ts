@@ -188,7 +188,25 @@ export class PropertiesService extends Service {
           },
         },
         authorizations: {
-          include: { agent: { select: { id: true, email: true, firstName: true, lastName: true } } },
+          include: {
+            agent: {
+              select: {
+                id: true,
+                email: true,
+                firstName: true,
+                lastName: true,
+                parentId: true,
+                agentProfile: {
+                  select: {
+                    id: true,
+                    agencyType: true,
+                    organizationName: true,
+                    isVerified: true,
+                  },
+                },
+              },
+            },
+          },
         },
       },
       orderBy: { createdAt: 'desc' },
