@@ -183,6 +183,7 @@ export class PropertiesService extends Service {
                 lastName: true,
                 role: true,
                 phone: true,
+                avatarUrl: true,
               },
             },
           },
@@ -196,6 +197,7 @@ export class PropertiesService extends Service {
                 firstName: true,
                 lastName: true,
                 parentId: true,
+                avatarUrl: true,
                 agentProfile: {
                   select: {
                     id: true,
@@ -266,7 +268,15 @@ export class PropertiesService extends Service {
       where: { agentId },
       include: {
         property: true,
-        owner: { select: { id: true, email: true, firstName: true, lastName: true } }
+        owner: {
+          select: {
+            id: true,
+            email: true,
+            firstName: true,
+            lastName: true,
+            avatarUrl: true,
+          },
+        },
       },
       orderBy: { createdAt: 'desc' }
     });
@@ -390,6 +400,7 @@ export class PropertiesService extends Service {
             lastName: true,
             role: true,
             phone: true,
+            avatarUrl: true,
           },
         },
       },
@@ -443,6 +454,7 @@ export class PropertiesService extends Service {
             lastName: true,
             role: true,
             phone: true,
+            avatarUrl: true,
           },
         },
       },
@@ -463,6 +475,7 @@ export class PropertiesService extends Service {
                 firstName: true,
                 lastName: true,
                 phone: true,
+                avatarUrl: true,
               },
             },
           },

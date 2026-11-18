@@ -518,6 +518,7 @@ export class UsersService extends Service {
           lastName: true,
           role: true,
           parentId: true,
+          avatarUrl: true,
           isActive: true,
           createdAt: true,
           agentProfile: {
@@ -542,6 +543,7 @@ export class UsersService extends Service {
         firstName: true,
         lastName: true,
         role: true,
+        avatarUrl: true,
         isActive: true,
         createdAt: true,
         agentProfile: {
@@ -584,6 +586,7 @@ export class UsersService extends Service {
         lastName: true,
         role: true,
         parentId: true,
+        avatarUrl: true,
         isActive: true,
         createdAt: true,
         agentProfile: {
