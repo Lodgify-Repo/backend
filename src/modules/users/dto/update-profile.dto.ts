@@ -10,8 +10,9 @@ export class UpdateProfileDto {
   @ApiPropertyOptional({
     description: 'Set to null to remove the current avatar',
     nullable: true,
+    type: String,
   })
   @IsOptional()
   @Equals(null)
-  avatarUrl?: null;
+  avatarUrl?: string | null;
 }
