@@ -1,9 +1,17 @@
 import { Test, TestingModule } from '@nestjs/testing';
+import { BadRequestException } from '@nestjs/common';
+import { mkdir, unlink, writeFile } from 'node:fs/promises';
 import { UsersService } from './users.service';
 import { PrismaService } from '@/infra/database/prisma.service';
 import { EventBusService } from '@/infra/eventbus';
 import { DomainError } from '@/common/domain/error';
 import { Role } from '@prisma/client';
+
+jest.mock('node:fs/promises', () => ({
+  mkdir: jest.fn().mockResolvedValue(undefined),
+  writeFile: jest.fn().mockResolvedValue(undefined),
+  unlink: jest.fn().mockResolvedValue(undefined),
+}));
 
 describe('UsersService', () => {
   let service: UsersService;
@@ -69,14 +77,78 @@ describe('UsersService', () => {
   describe('updateProfile', () => {
     it('should update user profile', async () => {
       const user = { id: '1', email: 'test@test.com' };
-      const updatedUser = { ...user, firstName: 'Updated' };
+      const updatedUser = { ...user, phone: '+2348012345678' };
 
       mockPrisma.user.findUnique.mockResolvedValue(user);
       mockPrisma.user.update.mockResolvedValue(updatedUser);
 
-      const result = await service.updateProfile('1', { firstName: 'Updated' });
+      const result = await service.updateProfile('1', { phone: '+2348012345678' });
       expect(result).toEqual(updatedUser);
       expect(mockPrisma.user.update).toHaveBeenCalled();
+    });
+  });
+
+  describe('uploadAvatar', () => {
+    const pngBuffer = Buffer.from([
+      0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 0,
+    ]);
+
+    it('should store an avatar and replace the previous uploaded file', async () => {
+      mockPrisma.user.findUnique.mockResolvedValue({
+        avatarUrl: '/uploads/avatars/old.png',
+      });
+      mockPrisma.user.update.mockResolvedValue({
+        id: '1',
+        avatarUrl: '/uploads/avatars/new.png',
+      });
+
+      const result = await service.uploadAvatar('1', {
+        buffer: pngBuffer,
+        mimetype: 'image/png',
+        size: pngBuffer.length,
+      });
+
+      expect(result.avatarUrl).toBe('/uploads/avatars/new.png');
+      expect(mkdir).toHaveBeenCalled();
+      expect(writeFile).toHaveBeenCalled();
+      expect(unlink).toHaveBeenCalledWith(
+        expect.stringContaining('old.png'),
+      );
+      expect(mockPrisma.user.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: { avatarUrl: expect.stringMatching(/^\/uploads\/avatars\/.+\.png$/) },
+        }),
+      );
+    });
+
+    it('should reject unsupported image types', async () => {
+      await expect(
+        service.uploadAvatar('1', {
+          buffer: pngBuffer,
+          mimetype: 'image/svg+xml',
+          size: pngBuffer.length,
+        }),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('should reject files without a valid image signature', async () => {
+      await expect(
+        service.uploadAvatar('1', {
+          buffer: Buffer.from('not-a-real-image'),
+          mimetype: 'image/png',
+          size: 16,
+        }),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('should reject avatars larger than 2 MB', async () => {
+      await expect(
+        service.uploadAvatar('1', {
+          buffer: pngBuffer,
+          mimetype: 'image/png',
+          size: 2 * 1024 * 1024 + 1,
+        }),
+      ).rejects.toThrow(BadRequestException);
     });
   });
 
@@ -88,7 +160,10 @@ describe('UsersService', () => {
       expect(result).toEqual({ success: true });
       expect(mockPrisma.user.update).toHaveBeenCalledWith(
         expect.objectContaining({
-          data: expect.objectContaining({ isActive: false }),
+          data: expect.objectContaining({
+            isActive: false,
+            refreshToken: null,
+          }),
         }),
       );
     });

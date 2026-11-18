@@ -1,12 +1,55 @@
-import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
-import { Controller, Get, Body, UseGuards, Request, Patch, Delete, Post, Param } from '@nestjs/common';
-import { UsersService } from '../services/users.service';
+import {
+  ApiTags,
+  ApiOperation,
+  ApiBearerAuth,
+  ApiBody,
+  ApiConsumes,
+} from '@nestjs/swagger';
+import {
+  BadRequestException,
+  Controller,
+  Get,
+  Body,
+  UseGuards,
+  Request,
+  Patch,
+  Delete,
+  Post,
+  Param,
+  UploadedFile,
+  UseInterceptors,
+} from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import type { MulterOptions } from '@nestjs/platform-express/multer/interfaces/multer-options.interface';
+import {
+  UsersService,
+  type UploadedAvatarFile,
+} from '../services/users.service';
+import {
+  AVATAR_ALLOWED_MIME_TYPES,
+  AVATAR_MAX_BYTES,
+} from '../avatar.constants';
 import { UpdateProfileDto } from '../dto/update-profile.dto';
 import { InviteSubAccountDto, AcceptSubAccountDto } from '../dto/sub-account.dto';
 import { CompleteOnboardingDto, ActivateOwnerProfileDto, ActivateAgentProfileDto } from '../dto/onboarding.dto';
 import { JwtAuthGuard } from '@/common/guards/jwt-auth.guard';
 import { CapabilityGuard } from '@/common/guards/capability.guard';
 import { RequireCapability } from '@/common/decorators/capability.decorator';
+
+const AVATAR_UPLOAD_OPTIONS: MulterOptions = {
+  limits: { fileSize: AVATAR_MAX_BYTES },
+  fileFilter: (_request, file, callback) => {
+    if (!AVATAR_ALLOWED_MIME_TYPES.has(file.mimetype)) {
+      callback(
+        new BadRequestException('Avatar must be a PNG, JPEG, or WebP image.'),
+        false,
+      );
+      return;
+    }
+
+    callback(null, true);
+  },
+};
 
 @ApiTags('Users')
 @ApiBearerAuth('access-token')
@@ -49,6 +92,30 @@ export class UsersController {
   @ApiOperation({ summary: 'Update profile' })
   async updateProfile(@Request() req: any, @Body() dto: UpdateProfileDto) {
     return this.usersService.updateProfile(req.user.id, dto);
+  }
+
+  @Post('me/avatar')
+  @ApiOperation({ summary: 'Upload profile avatar' })
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      required: ['avatar'],
+      properties: {
+        avatar: { type: 'string', format: 'binary' },
+      },
+    },
+  })
+  @UseInterceptors(FileInterceptor('avatar', AVATAR_UPLOAD_OPTIONS))
+  async uploadAvatar(
+    @Request() req: any,
+    @UploadedFile() file?: UploadedAvatarFile,
+  ) {
+    if (!file) {
+      throw new BadRequestException('Avatar image is required.');
+    }
+
+    return this.usersService.uploadAvatar(req.user.id, file);
   }
 
   @Delete('me')

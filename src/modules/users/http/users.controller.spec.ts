@@ -1,4 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
+import { BadRequestException } from '@nestjs/common';
 import { UsersController } from './users.controller';
 import { UsersService } from '../services/users.service';
 import { Role } from '@prisma/client';
@@ -12,6 +13,7 @@ describe('UsersController', () => {
   const mockUsersService = {
     getProfile: jest.fn(),
     updateProfile: jest.fn(),
+    uploadAvatar: jest.fn(),
     deleteAccount: jest.fn(),
     inviteSubAccount: jest.fn(),
     getSubAccounts: jest.fn(),
@@ -53,11 +55,11 @@ describe('UsersController', () => {
   describe('updateProfile', () => {
     it('should update and return user profile', async () => {
       const req = { user: { id: '1' } };
-      const dto = { firstName: 'Updated' };
+      const dto = { phone: '+2348012345678' };
       mockUsersService.updateProfile.mockResolvedValue({ id: '1', ...dto });
 
       const result = await controller.updateProfile(req, dto);
-      expect(result.firstName).toBe('Updated');
+      expect(result.phone).toBe('+2348012345678');
     });
   });
 
@@ -68,6 +70,34 @@ describe('UsersController', () => {
 
       const result = await controller.deleteAccount(req);
       expect(result).toEqual({ success: true });
+    });
+  });
+
+  describe('uploadAvatar', () => {
+    it('should upload the avatar for the current user', async () => {
+      const req = { user: { id: '1' } };
+      const file = {
+        buffer: Buffer.from('avatar'),
+        mimetype: 'image/png',
+        size: 6,
+      };
+      mockUsersService.uploadAvatar.mockResolvedValue({
+        id: '1',
+        avatarUrl: '/uploads/avatars/avatar.png',
+      });
+
+      const result = await controller.uploadAvatar(req, file);
+
+      expect(result.avatarUrl).toBe('/uploads/avatars/avatar.png');
+      expect(mockUsersService.uploadAvatar).toHaveBeenCalledWith('1', file);
+    });
+
+    it('should reject a missing avatar', async () => {
+      const req = { user: { id: '1' } };
+
+      await expect(controller.uploadAvatar(req)).rejects.toThrow(
+        BadRequestException,
+      );
     });
   });
 

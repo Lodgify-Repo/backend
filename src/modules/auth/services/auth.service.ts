@@ -127,7 +127,7 @@ export class AuthService extends Service {
     const user = await this.prisma.user.findFirst({
       where: { refreshToken: token },
     });
-    if (!user) {
+    if (!user || !user.isActive || user.deletedAt) {
       throw new DomainError(
         AuthErrorCodes.INVALID_CREDENTIALS,
         'Invalid refresh token',
@@ -174,11 +174,25 @@ export class AuthService extends Service {
     }
 
     if (!existingUser.googleId && profile.googleId) {
+      if (!existingUser.isActive || existingUser.deletedAt) {
+        throw new DomainError(
+          AuthErrorCodes.ACCOUNT_DISABLED,
+          'Account is disabled',
+        );
+      }
+
       const linkedUser = await this.prisma.user.update({
         where: { id: existingUser.id },
         data: { googleId: profile.googleId, avatarUrl: profile.avatarUrl },
       });
       return this.login(linkedUser);
+    }
+
+    if (!existingUser.isActive || existingUser.deletedAt) {
+      throw new DomainError(
+        AuthErrorCodes.ACCOUNT_DISABLED,
+        'Account is disabled',
+      );
     }
 
     return this.login(existingUser);

@@ -1,4 +1,6 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
+import { mkdir, unlink, writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
 import { Service } from '@/common/domain/base.service';
 import { PrismaService } from '@/infra/database/prisma.service';
 import { EventBusService } from '@/infra/eventbus';
@@ -10,7 +12,19 @@ import {UserCapabilities,AccountPersona,} from '@/common/domain/user-capability.
 import * as crypto from 'crypto';
 import { DomainError } from '@/common/domain/error';
 import { UserErrorCodes } from '../errors';
+import {
+  AVATAR_MAX_BYTES,
+  AVATAR_MIME_EXTENSIONS,
+  AVATAR_PUBLIC_PREFIX,
+  AVATAR_UPLOAD_DIR,
+} from '../avatar.constants';
 import { User, Role } from '@prisma/client';
+
+export interface UploadedAvatarFile {
+  readonly buffer: Buffer;
+  readonly mimetype: string;
+  readonly size: number;
+}
 
 export type UserProfile = Pick<
   User,
@@ -35,6 +49,38 @@ function formatInviterName(
     : '';
 
   return fullName || inviter?.email || 'Your administrator';
+}
+
+function hasAvatarSignature(buffer: Buffer, mimetype: string): boolean {
+  if (buffer.length < 12) {
+    return false;
+  }
+
+  if (mimetype === 'image/png') {
+    return (
+      buffer[0] === 0x89 &&
+      buffer[1] === 0x50 &&
+      buffer[2] === 0x4e &&
+      buffer[3] === 0x47 &&
+      buffer[4] === 0x0d &&
+      buffer[5] === 0x0a &&
+      buffer[6] === 0x1a &&
+      buffer[7] === 0x0a
+    );
+  }
+
+  if (mimetype === 'image/jpeg') {
+    return buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff;
+  }
+
+  if (mimetype === 'image/webp') {
+    return (
+      buffer.subarray(0, 4).toString('ascii') === 'RIFF' &&
+      buffer.subarray(8, 12).toString('ascii') === 'WEBP'
+    );
+  }
+
+  return false;
 }
 
 @Injectable()
@@ -175,15 +221,94 @@ export class UsersService extends Service {
         phone: true,
         avatarUrl: true,
         isActive: true,
+        createdAt: true,
         updatedAt: true,
       },
     });
   }
 
+  async uploadAvatar(userId: string, file: UploadedAvatarFile) {
+    const extension = AVATAR_MIME_EXTENSIONS[file.mimetype];
+
+    if (!extension) {
+      throw new BadRequestException(
+        'Avatar must be a PNG, JPEG, or WebP image.',
+      );
+    }
+
+    if (
+      !file.buffer ||
+      file.buffer.length === 0 ||
+      file.size > AVATAR_MAX_BYTES
+    ) {
+      throw new BadRequestException(
+        'Avatar must be a non-empty image no larger than 2 MB.',
+      );
+    }
+
+    if (!hasAvatarSignature(file.buffer, file.mimetype)) {
+      throw new BadRequestException('The uploaded file is not a valid image.');
+    }
+
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { avatarUrl: true },
+    });
+
+    if (!user) {
+      throw new DomainError(UserErrorCodes.USER_NOT_FOUND);
+    }
+
+    const fileName = `${crypto.randomUUID()}${extension}`;
+    const filePath = join(AVATAR_UPLOAD_DIR, fileName);
+
+    await mkdir(AVATAR_UPLOAD_DIR, { recursive: true });
+    await writeFile(filePath, file.buffer);
+
+    try {
+      const updated = await this.prisma.user.update({
+        where: { id: userId },
+        data: { avatarUrl: `${AVATAR_PUBLIC_PREFIX}/${fileName}` },
+        select: {
+          id: true,
+          email: true,
+          firstName: true,
+          lastName: true,
+          role: true,
+          phone: true,
+          avatarUrl: true,
+          isActive: true,
+          createdAt: true,
+          updatedAt: true,
+        },
+      });
+
+      await this.removeStoredAvatar(user.avatarUrl);
+
+      return updated;
+    } catch (error) {
+      await unlink(filePath).catch(() => undefined);
+      throw error;
+    }
+  }
+
+  private async removeStoredAvatar(avatarUrl: string | null): Promise<void> {
+    if (!avatarUrl || !avatarUrl.startsWith(`${AVATAR_PUBLIC_PREFIX}/`)) {
+      return;
+    }
+
+    const fileName = avatarUrl.slice(AVATAR_PUBLIC_PREFIX.length + 1);
+    if (!fileName || fileName.includes('/') || fileName.includes('\\')) {
+      return;
+    }
+
+    await unlink(join(AVATAR_UPLOAD_DIR, fileName)).catch(() => undefined);
+  }
+
   async deleteAccount(userId: string): Promise<{ success: boolean }> {
     await this.prisma.user.update({
       where: { id: userId },
-      data: { deletedAt: new Date(), isActive: false },
+      data: { deletedAt: new Date(), isActive: false, refreshToken: null },
     });
 
     return { success: true };
