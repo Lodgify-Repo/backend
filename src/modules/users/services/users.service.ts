@@ -1,6 +1,5 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
-import { mkdir, unlink, writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { BadRequestException, Injectable, InternalServerErrorException } from '@nestjs/common';
+import { v2 as cloudinary, type UploadApiResponse } from 'cloudinary';
 import { Service } from '@/common/domain/base.service';
 import { PrismaService } from '@/infra/database/prisma.service';
 import { EventBusService } from '@/infra/eventbus';
@@ -15,8 +14,7 @@ import { UserErrorCodes } from '../errors';
 import {
   AVATAR_MAX_BYTES,
   AVATAR_MIME_EXTENSIONS,
-  AVATAR_PUBLIC_PREFIX,
-  AVATAR_UPLOAD_DIR,
+  CLOUDINARY_AVATAR_FOLDER,
 } from '../avatar.constants';
 import { User, Role } from '@prisma/client';
 
@@ -209,7 +207,7 @@ export class UsersService extends Service {
       throw new DomainError(UserErrorCodes.USER_NOT_FOUND);
     }
 
-    return this.prisma.user.update({
+    const updated = await this.prisma.user.update({
       where: { id: userId },
       data: dto,
       select: {
@@ -225,12 +223,16 @@ export class UsersService extends Service {
         updatedAt: true,
       },
     });
+
+    if (dto.avatarUrl === null) {
+      await this.removeCloudinaryAvatar(user.avatarUrl);
+    }
+
+    return updated;
   }
 
   async uploadAvatar(userId: string, file: UploadedAvatarFile) {
-    const extension = AVATAR_MIME_EXTENSIONS[file.mimetype];
-
-    if (!extension) {
+    if (!AVATAR_MIME_EXTENSIONS[file.mimetype]) {
       throw new BadRequestException(
         'Avatar must be a PNG, JPEG, or WebP image.',
       );
@@ -259,16 +261,12 @@ export class UsersService extends Service {
       throw new DomainError(UserErrorCodes.USER_NOT_FOUND);
     }
 
-    const fileName = `${crypto.randomUUID()}${extension}`;
-    const filePath = join(AVATAR_UPLOAD_DIR, fileName);
-
-    await mkdir(AVATAR_UPLOAD_DIR, { recursive: true });
-    await writeFile(filePath, file.buffer);
+    const upload = await this.uploadToCloudinary(file);
 
     try {
       const updated = await this.prisma.user.update({
         where: { id: userId },
-        data: { avatarUrl: `${AVATAR_PUBLIC_PREFIX}/${fileName}` },
+        data: { avatarUrl: upload.secure_url },
         select: {
           id: true,
           email: true,
@@ -283,26 +281,116 @@ export class UsersService extends Service {
         },
       });
 
-      await this.removeStoredAvatar(user.avatarUrl);
+      await this.removeCloudinaryAvatar(user.avatarUrl);
 
       return updated;
     } catch (error) {
-      await unlink(filePath).catch(() => undefined);
+      await this.destroyCloudinaryImage(upload.public_id);
       throw error;
     }
   }
 
-  private async removeStoredAvatar(avatarUrl: string | null): Promise<void> {
-    if (!avatarUrl || !avatarUrl.startsWith(`${AVATAR_PUBLIC_PREFIX}/`)) {
+  private async uploadToCloudinary(
+    file: UploadedAvatarFile,
+  ): Promise<UploadApiResponse> {
+    this.configureCloudinary();
+
+    return new Promise((resolve, reject) => {
+      const stream = cloudinary.uploader.upload_stream(
+        {
+          folder: CLOUDINARY_AVATAR_FOLDER,
+          public_id: crypto.randomUUID(),
+          resource_type: 'image',
+          overwrite: false,
+          transformation: [
+            {
+              width: 512,
+              height: 512,
+              crop: 'fill',
+              gravity: 'face',
+              quality: 'auto',
+              fetch_format: 'auto',
+            },
+          ],
+        },
+        (error, result) => {
+          if (error || !result) {
+            reject(
+              error ??
+                new InternalServerErrorException(
+                  'Cloudinary did not return an uploaded image.',
+                ),
+            );
+            return;
+          }
+
+          resolve(result);
+        },
+      );
+
+      stream.end(file.buffer);
+    });
+  }
+
+  private async removeCloudinaryAvatar(avatarUrl: string | null): Promise<void> {
+    const publicId = this.extractCloudinaryPublicId(avatarUrl);
+
+    if (publicId) {
+      await this.destroyCloudinaryImage(publicId);
+    }
+  }
+
+  private async destroyCloudinaryImage(publicId: string): Promise<void> {
+    try {
+      this.configureCloudinary();
+      await cloudinary.uploader.destroy(publicId, {
+        resource_type: 'image',
+        invalidate: true,
+      });
+    } catch {
       return;
     }
+  }
 
-    const fileName = avatarUrl.slice(AVATAR_PUBLIC_PREFIX.length + 1);
-    if (!fileName || fileName.includes('/') || fileName.includes('\\')) {
-      return;
+  private extractCloudinaryPublicId(avatarUrl: string | null): string | null {
+    if (!avatarUrl || !avatarUrl.includes('res.cloudinary.com')) {
+      return null;
     }
 
-    await unlink(join(AVATAR_UPLOAD_DIR, fileName)).catch(() => undefined);
+    const uploadMarker = '/upload/';
+    const uploadIndex = avatarUrl.indexOf(uploadMarker);
+
+    if (uploadIndex === -1) {
+      return null;
+    }
+
+    const uploadedPath = avatarUrl.slice(uploadIndex + uploadMarker.length);
+    const versionMatch = uploadedPath.match(/v\d+\/(.+)$/);
+
+    if (!versionMatch) {
+      return null;
+    }
+
+    return versionMatch[1].replace(/\.[^/.]+$/, '');
+  }
+
+  private configureCloudinary(): void {
+    const cloudName = process.env.CLOUDINARY_CLOUD_NAME;
+    const apiKey = process.env.CLOUDINARY_API_KEY;
+    const apiSecret = process.env.CLOUDINARY_API_SECRET;
+
+    if (!cloudName || !apiKey || !apiSecret) {
+      throw new InternalServerErrorException(
+        'Cloudinary is not configured. Set CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, and CLOUDINARY_API_SECRET.',
+      );
+    }
+
+    cloudinary.config({
+      cloud_name: cloudName,
+      api_key: apiKey,
+      api_secret: apiSecret,
+      secure: true,
+    });
   }
 
   async deleteAccount(userId: string): Promise<{ success: boolean }> {

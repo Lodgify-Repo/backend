@@ -1,9 +1,7 @@
 import { NestFactory } from '@nestjs/core';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { ValidationPipe } from '@nestjs/common';
-import { NestExpressApplication } from '@nestjs/platform-express';
 import cookieParser from 'cookie-parser';
-import { join } from 'node:path';
 import { AppModule } from './app.module';
 import { DomainErrorFilter, registerErrorMap } from './common/filters/domain-error.filter';
 import { AuthErrorMap } from './modules/auth/errors';
@@ -14,14 +12,13 @@ import { BookingErrorMap } from './modules/bookings/errors';
 import { PrismaClientExceptionFilter } from './common/filters/prisma-client-exception.filter';
 
 async function bootstrap() {
-  const app = await NestFactory.create<NestExpressApplication>(AppModule);
+  const app = await NestFactory.create(AppModule);
 
   app.enableCors({
     origin: true,
     credentials: true,
   });
 
-  app.useStaticAssets(join(process.cwd(), 'uploads'), { prefix: '/uploads/' });
   app.use(cookieParser());
   registerErrorMap(AuthErrorMap);
   registerErrorMap(UserErrorMap);

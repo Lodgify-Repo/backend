@@ -81,14 +81,17 @@ describe('UsersController', () => {
         mimetype: 'image/png',
         size: 6,
       };
+      const avatarUrl =
+        'https://res.cloudinary.com/test-cloud/image/upload/v1712345678/lodgify/avatars/avatar.png';
+
       mockUsersService.uploadAvatar.mockResolvedValue({
         id: '1',
-        avatarUrl: '/uploads/avatars/avatar.png',
+        avatarUrl,
       });
 
       const result = await controller.uploadAvatar(req, file);
 
-      expect(result.avatarUrl).toBe('/uploads/avatars/avatar.png');
+      expect(result.avatarUrl).toBe(avatarUrl);
       expect(mockUsersService.uploadAvatar).toHaveBeenCalledWith('1', file);
     });
 

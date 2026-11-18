@@ -1,17 +1,45 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { BadRequestException } from '@nestjs/common';
-import { mkdir, unlink, writeFile } from 'node:fs/promises';
+import { v2 as cloudinary } from 'cloudinary';
 import { UsersService } from './users.service';
 import { PrismaService } from '@/infra/database/prisma.service';
 import { EventBusService } from '@/infra/eventbus';
 import { DomainError } from '@/common/domain/error';
 import { Role } from '@prisma/client';
 
-jest.mock('node:fs/promises', () => ({
-  mkdir: jest.fn().mockResolvedValue(undefined),
-  writeFile: jest.fn().mockResolvedValue(undefined),
-  unlink: jest.fn().mockResolvedValue(undefined),
+jest.mock('cloudinary', () => ({
+  v2: {
+    config: jest.fn(),
+    uploader: {
+      upload_stream: jest.fn(),
+      destroy: jest.fn().mockResolvedValue({ result: 'ok' }),
+    },
+  },
 }));
+
+const cloudinaryMock = cloudinary as unknown as {
+  config: jest.Mock;
+  uploader: {
+    upload_stream: jest.Mock;
+    destroy: jest.Mock;
+  };
+};
+
+interface CloudinaryUploadResult {
+  readonly public_id: string;
+  readonly secure_url: string;
+}
+
+function mockCloudinaryUpload(result: CloudinaryUploadResult): void {
+  cloudinaryMock.uploader.upload_stream.mockImplementationOnce(
+    (
+      _options: unknown,
+      callback: (error: Error | null, result: CloudinaryUploadResult) => void,
+    ) => ({
+      end: () => callback(null, result),
+    }),
+  );
+}
 
 describe('UsersService', () => {
   let service: UsersService;
@@ -39,6 +67,10 @@ describe('UsersService', () => {
   };
 
   beforeEach(async () => {
+    process.env.CLOUDINARY_CLOUD_NAME = 'test-cloud';
+    process.env.CLOUDINARY_API_KEY = 'test-key';
+    process.env.CLOUDINARY_API_SECRET = 'test-secret';
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         UsersService,
@@ -86,20 +118,55 @@ describe('UsersService', () => {
       expect(result).toEqual(updatedUser);
       expect(mockPrisma.user.update).toHaveBeenCalled();
     });
+
+    it('should remove the current Cloudinary avatar when requested', async () => {
+      const avatarUrl =
+        'https://res.cloudinary.com/test-cloud/image/upload/v1712345678/lodgify/avatars/old.png';
+
+      mockPrisma.user.findUnique.mockResolvedValue({
+        id: '1',
+        email: 'test@test.com',
+        avatarUrl,
+      });
+      mockPrisma.user.update.mockResolvedValue({
+        id: '1',
+        email: 'test@test.com',
+        avatarUrl: null,
+      });
+
+      const result = await service.updateProfile('1', { avatarUrl: null });
+
+      expect(result.avatarUrl).toBeNull();
+      expect(cloudinaryMock.uploader.destroy).toHaveBeenCalledWith(
+        'lodgify/avatars/old',
+        {
+          resource_type: 'image',
+          invalidate: true,
+        },
+      );
+    });
   });
 
   describe('uploadAvatar', () => {
     const pngBuffer = Buffer.from([
       0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 0,
     ]);
+    const oldAvatarUrl =
+      'https://res.cloudinary.com/test-cloud/image/upload/c_fill/v1712345678/lodgify/avatars/old.png';
+    const newAvatarUrl =
+      'https://res.cloudinary.com/test-cloud/image/upload/c_fill/v1712345679/lodgify/avatars/new.png';
 
-    it('should store an avatar and replace the previous uploaded file', async () => {
+    it('should upload an avatar to Cloudinary and replace the previous image', async () => {
       mockPrisma.user.findUnique.mockResolvedValue({
-        avatarUrl: '/uploads/avatars/old.png',
+        avatarUrl: oldAvatarUrl,
       });
       mockPrisma.user.update.mockResolvedValue({
         id: '1',
-        avatarUrl: '/uploads/avatars/new.png',
+        avatarUrl: newAvatarUrl,
+      });
+      mockCloudinaryUpload({
+        public_id: 'lodgify/avatars/new',
+        secure_url: newAvatarUrl,
       });
 
       const result = await service.uploadAvatar('1', {
@@ -108,16 +175,56 @@ describe('UsersService', () => {
         size: pngBuffer.length,
       });
 
-      expect(result.avatarUrl).toBe('/uploads/avatars/new.png');
-      expect(mkdir).toHaveBeenCalled();
-      expect(writeFile).toHaveBeenCalled();
-      expect(unlink).toHaveBeenCalledWith(
-        expect.stringContaining('old.png'),
+      expect(result.avatarUrl).toBe(newAvatarUrl);
+      expect(cloudinaryMock.config).toHaveBeenCalledWith({
+        cloud_name: 'test-cloud',
+        api_key: 'test-key',
+        api_secret: 'test-secret',
+        secure: true,
+      });
+      expect(cloudinaryMock.uploader.upload_stream).toHaveBeenCalledWith(
+        expect.objectContaining({
+          folder: 'lodgify/avatars',
+          resource_type: 'image',
+        }),
+        expect.any(Function),
+      );
+      expect(cloudinaryMock.uploader.destroy).toHaveBeenCalledWith(
+        'lodgify/avatars/old',
+        {
+          resource_type: 'image',
+          invalidate: true,
+        },
       );
       expect(mockPrisma.user.update).toHaveBeenCalledWith(
         expect.objectContaining({
-          data: { avatarUrl: expect.stringMatching(/^\/uploads\/avatars\/.+\.png$/) },
+          data: { avatarUrl: newAvatarUrl },
         }),
+      );
+    });
+
+    it('should remove the uploaded image if the profile update fails', async () => {
+      mockPrisma.user.findUnique.mockResolvedValue({ avatarUrl: null });
+      mockPrisma.user.update.mockRejectedValue(new Error('database unavailable'));
+      mockCloudinaryUpload({
+        public_id: 'lodgify/avatars/new',
+        secure_url: newAvatarUrl,
+      });
+
+      await expect(
+        service.uploadAvatar('1', {
+          buffer: pngBuffer,
+          mimetype: 'image/png',
+          size: pngBuffer.length,
+        }),
+      ).rejects.toThrow('database unavailable');
+
+      expect(cloudinaryMock.uploader.destroy).toHaveBeenCalledWith(
+        'lodgify/avatars/new',
+        {
+          resource_type: 'image',
+          invalidate: true,
+        },
       );
     });
 

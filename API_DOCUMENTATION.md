@@ -77,13 +77,13 @@
 
 ### PATCH `/users/me`
 **Description:** The system updates the editable profile data for the current user.
-**Payload:** Send an `UpdateProfileDto` JSON object in the request body with optional `phone` and `avatarUrl` values. First name, last name, email, and role cannot be changed.
+**Payload:** Send an `UpdateProfileDto` JSON object in the request body with optional `phone` and `avatarUrl` values. Set `avatarUrl` to `null` to remove the current image. First name, last name, email, and role cannot be changed.
 **Returns:** The system returns the updated user profile object.
 
 ### POST `/users/me/avatar`
-**Description:** The system uploads a profile image for the current user.
+**Description:** The system uploads a profile image for the current user to Cloudinary.
 **Payload:** Send a `multipart/form-data` request with an `avatar` file. Supported formats are PNG, JPEG, and WebP, up to 2 MB.
-**Returns:** The system stores the image, updates `avatarUrl`, and returns the updated user profile object.
+**Returns:** The system stores the image in Cloudinary, updates `avatarUrl` with the Cloudinary URL, and returns the updated user profile object.
 
 ### DELETE `/users/me`
 **Description:** The system deletes the account of the current user and revokes access. The account cannot be used to sign in again.

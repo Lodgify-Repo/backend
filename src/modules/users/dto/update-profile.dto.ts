@@ -1,4 +1,4 @@
-import { IsOptional, IsPhoneNumber, IsUrl } from 'class-validator';
+import { Equals, IsOptional, IsPhoneNumber } from 'class-validator';
 import { ApiPropertyOptional } from '@nestjs/swagger';
 
 export class UpdateProfileDto {
@@ -7,8 +7,11 @@ export class UpdateProfileDto {
   @IsPhoneNumber()
   phone?: string | null;
 
-  @ApiPropertyOptional({ description: 'Avatar image URL', example: 'https://storage.example.com/avatars/john.png' })
+  @ApiPropertyOptional({
+    description: 'Set to null to remove the current avatar',
+    nullable: true,
+  })
   @IsOptional()
-  @IsUrl()
-  avatarUrl?: string | null;
+  @Equals(null)
+  avatarUrl?: null;
 }
