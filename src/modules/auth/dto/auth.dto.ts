@@ -1,4 +1,4 @@
-import {IsEmail,IsString,MinLength,IsOptional,IsPhoneNumber,IsEnum,Length,Matches,} from 'class-validator';
+import {Equals,IsBoolean,IsEmail,IsString,MinLength,IsOptional,IsPhoneNumber,IsEnum,Length,Matches,} from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Role } from '@prisma/client';
 
@@ -43,6 +43,22 @@ export class RegisterDto {
   @IsOptional()
   @IsEnum(Role)
   role?: Role = Role.USER;
+
+  @ApiProperty({
+    description: 'Confirms acceptance of the current privacy policy',
+    example: true,
+  })
+  @IsBoolean()
+  @Equals(true)
+  privacyPolicyAccepted: boolean;
+
+  @ApiProperty({
+    description: 'Confirms consent to the described processing of personal data',
+    example: true,
+  })
+  @IsBoolean()
+  @Equals(true)
+  dataProcessingConsent: boolean;
 }
 
 export class LoginDto {

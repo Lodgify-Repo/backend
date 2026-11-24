@@ -167,7 +167,8 @@ export class UsersService extends Service {
         userId,
         agencyType: dto.agencyType,
         organizationName: dto.organizationName,
-        licenseNumber: dto.licenseNumber,
+        credentialType: dto.credentialType,
+        credentialNumber: dto.credentialNumber.trim().toUpperCase(),
         defaultCommissionRate: dto.defaultCommissionRate,
       },
     });

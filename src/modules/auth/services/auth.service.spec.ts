@@ -116,11 +116,19 @@ describe('AuthService', () => {
         firstName: 'John',
         lastName: 'Doe',
         role: Role.USER,
+        privacyPolicyAccepted: true,
+        dataProcessingConsent: true,
       });
 
       expect(result).toBeDefined();
       expect((result as any).password).toBeUndefined();
-      expect(mockPrisma.user.create).toHaveBeenCalled();
+      expect(mockPrisma.user.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          privacyPolicyAcceptedAt: expect.any(Date),
+          dataProcessingConsentAt: expect.any(Date),
+          privacyPolicyVersion: '2026-11-24',
+        }),
+      });
     });
 
     it('should throw error if user already exists', async () => {
@@ -136,6 +144,8 @@ describe('AuthService', () => {
           firstName: 'John',
           lastName: 'Doe',
           role: Role.USER,
+          privacyPolicyAccepted: true,
+          dataProcessingConsent: true,
         }),
       ).rejects.toThrow(DomainError);
     });

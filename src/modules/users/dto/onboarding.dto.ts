@@ -1,6 +1,6 @@
-import { IsEnum, IsOptional, IsString, IsNumber, Min } from 'class-validator';
+import { IsEnum, IsOptional, IsString, IsNumber, Min, Length, Matches } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { AgentType, OnboardingIntent } from '@prisma/client';
+import { AgentCredentialType, AgentType, OnboardingIntent } from '@prisma/client';
 
 export class CompleteOnboardingDto {
   @ApiProperty({ description: 'Initial onboarding intent', enum: OnboardingIntent })
@@ -25,10 +25,23 @@ export class ActivateAgentProfileDto {
   @IsString()
   organizationName?: string;
 
-  @ApiPropertyOptional({ description: 'Professional license number' })
-  @IsOptional()
+  @ApiProperty({
+    description: 'Credential supplied to verify the agent',
+    enum: AgentCredentialType,
+  })
+  @IsEnum(AgentCredentialType)
+  credentialType: AgentCredentialType;
+
+  @ApiProperty({
+    description: 'CAC, SCUML, ESVARBON/NIESV, or state permit number',
+    example: 'RC1234567',
+  })
   @IsString()
-  licenseNumber?: string;
+  @Length(3, 100)
+  @Matches(/[A-Za-z0-9]/, {
+    message: 'credentialNumber must contain at least one letter or number',
+  })
+  credentialNumber: string;
 
   @ApiPropertyOptional({ description: 'Default commission rate percent (e.g. 10 for 10%)' })
   @IsOptional()

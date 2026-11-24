@@ -7,40 +7,41 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-
 model User {
-  id                String    @id @default(uuid())
-  email             String    @unique
-  password          String?
-  firstName         String
-  lastName          String
-  role              Role      @default(USER)
-  phone             String?
-  avatarUrl         String?
-  isActive          Boolean   @default(true)
-  googleId          String?   @unique
-  refreshToken      String?
-  resetToken        String?
-  resetTokenExpires DateTime?
-  parentId          String?
-  parent            User?     @relation("SubAccounts", fields: [parentId], references: [id])
-  createdAt         DateTime  @default(now())
-  updatedAt         DateTime  @updatedAt
-  deletedAt         DateTime?
+  id                      String    @id @default(uuid())
+  email                   String    @unique
+  password                String?
+  firstName               String
+  lastName                String
+  role                    Role      @default(USER)
+  phone                   String?
+  avatarUrl               String?
+  privacyPolicyAcceptedAt DateTime?
+  dataProcessingConsentAt DateTime?
+  privacyPolicyVersion    String?
+  isActive                Boolean   @default(true)
+  googleId                String?   @unique
+  refreshToken            String?
+  resetToken              String?
+  resetTokenExpires       DateTime?
+  parentId                String?
+  parent                  User?     @relation("SubAccounts", fields: [parentId], references: [id])
+  createdAt               DateTime  @default(now())
+  updatedAt               DateTime  @updatedAt
+  deletedAt               DateTime?
 
   // Relations
-  subAccounts       User[]                 @relation("SubAccounts")
-  sentInvitations   SubAccountInvitation[] @relation("SentInvitations")
-  apiKeys           ApiKey[]
-  ownerProfile      OwnerProfile?
-  agentProfile      AgentProfile?
-  properties        Property[]
-  receivedAuths     AgentPropertyAuthorization[] @relation("AgentAuths")
-  grantedAuths      AgentPropertyAuthorization[] @relation("OwnerAuths")
+  subAccounts         User[]                       @relation("SubAccounts")
+  sentInvitations     SubAccountInvitation[]       @relation("SentInvitations")
+  apiKeys             ApiKey[]
+  ownerProfile        OwnerProfile?
+  agentProfile        AgentProfile?
+  properties          Property[]
+  receivedAuths       AgentPropertyAuthorization[] @relation("AgentAuths")
+  grantedAuths        AgentPropertyAuthorization[] @relation("OwnerAuths")
   propertyAssignments PropertyAssignment[]
-  bookings          Booking[]              @relation("GuestBookings")
+  bookings            Booking[]                    @relation("GuestBookings")
 }
-
 
 enum Role {
   SUPER_ADMIN
@@ -48,7 +49,6 @@ enum Role {
   MANAGER
   USER
 }
-
 
 enum AuditLogLevel {
   INFO
@@ -94,7 +94,6 @@ model AuditLog {
   @@index([createdAt])
 }
 
-
 model SubAccountInvitation {
   id        String   @id @default(uuid())
   senderId  String
@@ -109,16 +108,15 @@ model SubAccountInvitation {
   updatedAt DateTime @updatedAt
 }
 
-
 model ApiKey {
   id          String    @id @default(uuid())
   name        String    @default("Default")
   key         String    @unique // SHA-256 hashed or secure key string
-  tenantId    String    // Associated tenant / account identifier
+  tenantId    String // Associated tenant / account identifier
   ownerId     String?
   owner       User?     @relation(fields: [ownerId], references: [id], onDelete: Cascade)
   tier        String    @default("standard") // standard, enterprise
-  permissions String[]  @default([])         // Authorization scopes/permissions
+  permissions String[]  @default([]) // Authorization scopes/permissions
   isActive    Boolean   @default(true)
   expiresAt   DateTime?
   lastUsedAt  DateTime?
@@ -148,6 +146,13 @@ enum PropertyStatus {
 enum AgentType {
   INDIVIDUAL
   ORGANIZATION
+}
+
+enum AgentCredentialType {
+  CAC
+  SCUML
+  ESVARBON_NIESV
+  STATE_PERMIT
 }
 
 enum CommissionType {
@@ -180,34 +185,36 @@ model OwnerProfile {
 }
 
 model AgentProfile {
-  id                    String    @id @default(uuid())
-  userId                String    @unique
-  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  agencyType            AgentType @default(INDIVIDUAL)
+  id                    String               @id @default(uuid())
+  userId                String               @unique
+  user                  User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  agencyType            AgentType            @default(INDIVIDUAL)
   organizationName      String?
   licenseNumber         String?
+  credentialType        AgentCredentialType?
+  credentialNumber      String?
   defaultCommissionRate Float?
-  isVerified            Boolean   @default(false)
-  createdAt             DateTime  @default(now())
-  updatedAt             DateTime  @updatedAt
+  isVerified            Boolean              @default(false)
+  createdAt             DateTime             @default(now())
+  updatedAt             DateTime             @updatedAt
 }
 
 model Property {
-  id          String         @id @default(uuid())
-  ownerId     String
-  owner       User           @relation(fields: [ownerId], references: [id], onDelete: Cascade)
-  title       String
-  category    PropertyCategory
-  status      PropertyStatus @default(DRAFT)
-  price       Decimal        @default(0.0)
-  metadata    Json?          
-  createdAt   DateTime       @default(now())
-  updatedAt   DateTime       @updatedAt
+  id        String           @id @default(uuid())
+  ownerId   String
+  owner     User             @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  title     String
+  category  PropertyCategory
+  status    PropertyStatus   @default(DRAFT)
+  price     Decimal          @default(0.0)
+  metadata  Json?
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
 
   authorizations AgentPropertyAuthorization[]
   assignments    PropertyAssignment[]
   bookings       Booking[]
-  
+
   @@index([ownerId])
   @@index([category])
   @@index([status])
@@ -284,4 +291,3 @@ model Booking {
   @@index([status])
   @@index([checkInDate, checkOutDate])
 }
-

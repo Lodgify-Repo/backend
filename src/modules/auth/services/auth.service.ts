@@ -14,6 +14,7 @@ import { User } from '@prisma/client';
 const OTP_TTL_MINUTES = 10;
 const OTP_TTL_MS = OTP_TTL_MINUTES * 60 * 1000;
 const RESET_TOKEN_TTL_MS = 60 * 60 * 1000;
+const PRIVACY_POLICY_VERSION = '2026-11-24';
 
 export type SanitizedUser = Omit<
   User,
@@ -212,12 +213,19 @@ export class AuthService extends Service {
 
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(dto.password, salt);
+    const consentedAt = new Date();
 
     const newUser = await this.prisma.user.create({
       data: {
-        ...dto,
+        email: dto.email,
+        firstName: dto.firstName,
+        lastName: dto.lastName,
+        phone: dto.phone,
         password: hashedPassword,
         role: dto.role,
+        privacyPolicyAcceptedAt: consentedAt,
+        dataProcessingConsentAt: consentedAt,
+        privacyPolicyVersion: PRIVACY_POLICY_VERSION,
       },
     });
 

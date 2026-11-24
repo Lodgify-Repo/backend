@@ -43,6 +43,8 @@ describe('AuthController', () => {
         password: 'password1',
         firstName: 'John',
         lastName: 'Doe',
+        privacyPolicyAccepted: true,
+        dataProcessingConsent: true,
       };
       mockAuthService.register.mockResolvedValue({ id: '1', email: dto.email });
 
